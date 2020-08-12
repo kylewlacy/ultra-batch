@@ -1,0 +1,20 @@
+[package]
+name = "ultra-batch"
+version = "0.1.0"
+authors = ["Kyle Lacy <kylelacy+git@pm.me>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "0.2.22", default-features = false, features = ["rt-core", "stream", "sync", "time"] }
+async-trait = "0.1.36"
+cht = "0.4.1"
+thiserror = "1.0.20"
+tokio-postponable-delay = "0.1.0"
+
+[dev-dependencies]
+uuid = "0.8.1"
+anyhow = "1.0.32"
+fakeit = "1.1.1"
+tokio = { version = "0.2.22", default-features = false, features = ["full"] }
