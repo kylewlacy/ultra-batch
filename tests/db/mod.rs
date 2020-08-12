@@ -78,10 +78,10 @@ impl Fetcher for FetchUsers {
     type Value = User;
     type Error = anyhow::Error;
 
-    async fn fetch(&self, keys: Vec<Self::Key>, values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error> {
+    async fn fetch(&self, keys: &[Self::Key], values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error> {
         for key in keys {
-            if let Some(user) = self.db.users.iter().find(|user| user.id == key) {
-                values.insert(key, user.clone())
+            if let Some(user) = self.db.users.iter().find(|user| user.id == *key) {
+                values.insert(*key, user.clone())
             }
         }
 

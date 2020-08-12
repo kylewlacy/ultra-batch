@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::hash::Hash;
 use std::fmt::Display;
@@ -32,8 +32,13 @@ where
             async move {
                 'task: loop {
                     // Wait for some keys to come in
-                    let mut pending_keys = match fetch_queue_rx.recv().await {
-                        Some(pending_keys) => pending_keys,
+                    let mut pending_keys = HashSet::new();
+                    match fetch_queue_rx.recv().await {
+                        Some(new_keys) => {
+                            for key in new_keys {
+                                pending_keys.insert(key);
+                            }
+                        }
                         None => {
                             // Fetch queue closed, so we're done
                             break 'task;
@@ -52,7 +57,9 @@ where
                             new_keys = fetch_queue_rx.recv() => {
                                 match new_keys {
                                     Some(new_keys) => {
-                                        pending_keys.extend(new_keys);
+                                        for key in new_keys {
+                                            pending_keys.insert(key);
+                                        }
                                     }
                                     None => {
                                         // Fetch queuie closed, so we're done waiting for keys
@@ -68,7 +75,8 @@ where
                         }
                     }
 
-                    let result = fetcher.fetch(pending_keys, &cache).await;
+                    let pending_keys: Vec<_> = pending_keys.into_iter().collect();
+                    let result = fetcher.fetch(&pending_keys, &cache).await;
                     fetch_result_tx.broadcast(result.map_err(|error| error.to_string()))
                         .expect("Error broadcasting fetch result");
                 }
@@ -150,7 +158,7 @@ pub trait Fetcher {
     type Value: Clone + Send + Sync;
     type Error: Display + Send + Sync + 'static;
 
-    async fn fetch(&self, keys: Vec<Self::Key>, values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error>;
+    async fn fetch(&self, keys: &[Self::Key], values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error>;
 }
 
 pub struct Cache<K, V> {

@@ -75,11 +75,11 @@ where
     type Value = F::Value;
     type Error = F::Error;
 
-    async fn fetch(&self, keys: Vec<Self::Key>, values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error> {
+    async fn fetch(&self, keys: &[Self::Key], values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error> {
         {
             self.total_calls.inc();
             let mut calls_per_key = self.calls_per_key.write().unwrap();
-            for key in &keys {
+            for key in keys {
                 calls_per_key.entry(key.clone()).or_default().inc();
             }
         }

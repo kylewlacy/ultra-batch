@@ -114,3 +114,46 @@ async fn test_load_caching() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_load_batching() -> anyhow::Result<()> {
+    let db = db::Database::fake();
+    let fetcher = stubs::ObserveFetcher::new(db::FetchUsers { db: db.clone() });
+    let batcher = Batcher::new(fetcher.clone());
+
+    let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
+
+    let spawn_batcher = |batch: &[uuid::Uuid]| {
+        let batcher = batcher.clone();
+        let batch = batch.to_vec();
+        async move {
+            let task = tokio::spawn(async move { batcher.load_many(&batch).await.unwrap() });
+            task.await.unwrap()
+        }
+    };
+
+    tokio::join! [
+        spawn_batcher(&user_ids[0..1]),
+        spawn_batcher(&user_ids[0..10]),
+        spawn_batcher(&user_ids[5..15]),
+        spawn_batcher(&user_ids[10..20]),
+        spawn_batcher(&user_ids[20..30]),
+        spawn_batcher(&user_ids[30..40]),
+        spawn_batcher(&user_ids[40..50]),
+        spawn_batcher(&user_ids[50..60]),
+        spawn_batcher(&user_ids[60..70]),
+        spawn_batcher(&user_ids[70..80]),
+        spawn_batcher(&user_ids[80..90]),
+        spawn_batcher(&user_ids[0..90]),
+    ];
+
+    assert_eq!(fetcher.total_calls(), 1);
+    for loaded_user_id in &user_ids[0..90] {
+        assert_eq!(fetcher.calls_for_key(loaded_user_id), 1);
+    }
+    for unloaded_user_id in &user_ids[90..] {
+        assert_eq!(fetcher.calls_for_key(unloaded_user_id), 0);
+    }
+
+    Ok(())
+}
