@@ -9,7 +9,7 @@ where
 {
     cache: Arc<Cache<F::Key, F::Value>>,
     _fetch_task: Arc<tokio::task::JoinHandle<()>>,
-    fetch_request_tx: tokio::sync::mpsc::UnboundedSender<FetchRequest<F::Key>>,
+    fetch_request_tx: tokio::sync::mpsc::Sender<FetchRequest<F::Key>>,
 }
 
 impl<F> Batcher<F>
@@ -38,9 +38,10 @@ where
         }
         let pending_keys = cache_lookup.pending_keys();
 
+        let mut fetch_request_tx = self.fetch_request_tx.clone();
         let (result_tx, result_rx) = tokio::sync::oneshot::channel();
         let fetch_request = FetchRequest { keys: pending_keys, result_tx };
-        self.fetch_request_tx.send(fetch_request).map_err(|_| LoadError::SendError)?;
+        fetch_request_tx.send(fetch_request).await.map_err(|_| LoadError::SendError)?;
 
         match result_rx.await {
             Ok(Ok(())) => { }
@@ -100,7 +101,7 @@ where
     pub fn build(self) -> Batcher<F> {
         let cache = Arc::new(Cache::new());
 
-        let (fetch_request_tx, mut fetch_request_rx) = tokio::sync::mpsc::unbounded_channel::<FetchRequest<F::Key>>();
+        let (fetch_request_tx, mut fetch_request_rx) = tokio::sync::mpsc::channel::<FetchRequest<F::Key>>(1);
 
         let fetch_task = tokio::spawn({
             let cache = cache.clone();
