@@ -3,7 +3,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::hash::Hash;
 use std::fmt::Display;
-use tokio::stream::StreamExt;
 
 pub struct Batcher<F>
 where
@@ -11,8 +10,7 @@ where
 {
     cache: Arc<Cache<F::Key, F::Value>>,
     _fetch_task: Arc<tokio::task::JoinHandle<()>>,
-    fetch_queue_tx: tokio::sync::mpsc::UnboundedSender<Vec<F::Key>>,
-    fetch_result_rx: tokio::sync::watch::Receiver<Result<(), String>>,
+    fetch_request_tx: tokio::sync::mpsc::UnboundedSender<FetchRequest<F::Key>>,
 }
 
 impl<F> Batcher<F>
@@ -24,8 +22,7 @@ where
         let delay_duration = tokio::time::Duration::from_millis(10);
         let eager_batch_size = 100;
 
-        let (fetch_result_tx, fetch_result_rx) = tokio::sync::watch::channel::<Result<(), String>>(Ok(()));
-        let (fetch_queue_tx, mut fetch_queue_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<F::Key>>();
+        let (fetch_request_tx, mut fetch_request_rx) = tokio::sync::mpsc::unbounded_channel::<FetchRequest<F::Key>>();
 
         let fetch_task = tokio::spawn({
             let cache = cache.clone();
@@ -33,11 +30,13 @@ where
                 'task: loop {
                     // Wait for some keys to come in
                     let mut pending_keys = HashSet::new();
-                    match fetch_queue_rx.recv().await {
-                        Some(new_keys) => {
-                            for key in new_keys {
+                    let mut result_txs = vec![];
+                    match fetch_request_rx.recv().await {
+                        Some(fetch_request) => {
+                            for key in fetch_request.keys {
                                 pending_keys.insert(key);
                             }
+                            result_txs.push(fetch_request.result_tx);
                         }
                         None => {
                             // Fetch queue closed, so we're done
@@ -54,12 +53,13 @@ where
 
                         let mut delay = tokio::time::delay_for(delay_duration);
                         tokio::select! {
-                            new_keys = fetch_queue_rx.recv() => {
-                                match new_keys {
-                                    Some(new_keys) => {
-                                        for key in new_keys {
+                            fetch_request = fetch_request_rx.recv() => {
+                                match fetch_request {
+                                    Some(fetch_request) => {
+                                        for key in fetch_request.keys {
                                             pending_keys.insert(key);
                                         }
+                                        result_txs.push(fetch_request.result_tx);
                                     }
                                     None => {
                                         // Fetch queuie closed, so we're done waiting for keys
@@ -76,9 +76,17 @@ where
                     }
 
                     let pending_keys: Vec<_> = pending_keys.into_iter().collect();
-                    let result = fetcher.fetch(&pending_keys, &cache).await;
-                    fetch_result_tx.broadcast(result.map_err(|error| error.to_string()))
-                        .expect("Error broadcasting fetch result");
+                    let result = fetcher.fetch(&pending_keys, &cache).await
+                        .map_err(|error| error.to_string());
+
+                    if result.is_ok() {
+                        cache.mark_keys_not_found(pending_keys);
+                    }
+
+                    for result_tx in result_txs {
+                        // Ignore error if receiver was already closed
+                        let _ = result_tx.send(result.clone());
+                    }
                 }
             }
         });
@@ -86,8 +94,7 @@ where
         Batcher {
             cache,
             _fetch_task: Arc::new(fetch_task),
-            fetch_queue_tx,
-            fetch_result_rx,
+            fetch_request_tx,
         }
     }
 
@@ -101,41 +108,36 @@ where
 
         match cache_lookup.lookup(&self.cache) {
             CacheLookupState::Done(result) => { return result; }
-            CacheLookupState::Pending { .. } => { }
+            CacheLookupState::Pending => { }
         }
         let pending_keys = cache_lookup.pending_keys();
 
-        let mut fetch_result_tx = self.fetch_result_rx.clone();
-        let cache = self.cache.clone();
-        let retrieve_values_task = tokio::spawn(async move {
-            let mut cache_lookup = cache_lookup;
-            loop {
-                match fetch_result_tx.next().await {
-                    None => {
-                        // Result channel closed, we won't be gettting our value
-                        return Err(LoadError::NotFound);
-                    }
-                    Some(Err(fetch_error)) => {
-                        return Err(LoadError::FetchError(fetch_error));
-                    }
-                    Some(Ok(())) => {
-                        // A fetch completed successfully, so check if we have all our keys
-                    }
-                }
+        let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+        let fetch_request = FetchRequest { keys: pending_keys, result_tx };
+        self.fetch_request_tx.send(fetch_request).map_err(|_| LoadError::SendError)?;
 
-                match cache_lookup.lookup(&cache) {
-                    CacheLookupState::Done(result) => { return result; }
-                    CacheLookupState::Pending { .. } => { }
-                }
+        match result_rx.await {
+            Ok(Ok(())) => { }
+            Ok(Err(fetch_error)) => {
+                return Err(LoadError::FetchError(fetch_error));
             }
-        });
+            Err(recv_error) => {
+                panic!("Batch result channel hung up with error: {}", recv_error);
+            }
+        }
 
-        self.fetch_queue_tx.send(pending_keys).map_err(|_| LoadError::SendError)?;
-
-        let retrieved_value_result = retrieve_values_task.await
-            .map_err(LoadError::TaskError)?;
-        retrieved_value_result
+        match cache_lookup.lookup(&self.cache) {
+            CacheLookupState::Done(result) => { return result; }
+            CacheLookupState::Pending => {
+                panic!("Batch result is still pending after result channel was sent");
+            }
+        }
     }
+}
+
+struct FetchRequest<K> {
+    keys: Vec<K>,
+    result_tx: tokio::sync::oneshot::Sender<Result<(), String>>,
 }
 
 impl<F> Clone for Batcher<F>
@@ -146,8 +148,7 @@ where
         Batcher {
             cache: self.cache.clone(),
             _fetch_task: self._fetch_task.clone(),
-            fetch_queue_tx: self.fetch_queue_tx.clone(),
-            fetch_result_rx: self.fetch_result_rx.clone(),
+            fetch_request_tx: self.fetch_request_tx.clone(),
         }
     }
 }
@@ -162,12 +163,13 @@ pub trait Fetcher {
 }
 
 pub struct Cache<K, V> {
-    map: cht::HashMap<K, V>,
+    map: cht::HashMap<K, CacheState<V>>,
 }
 
 impl<K, V> Cache<K, V>
 where
-    K: Hash + Eq,
+    K: Clone + Hash + Eq,
+    V: Clone,
 {
     fn new() -> Self {
         Cache {
@@ -176,8 +178,21 @@ where
     }
 
     pub fn insert(&self, key: K, value: V) {
-        self.map.insert_and(key, value, |_| {});
+        self.map.insert_and(key, CacheState::Loaded(value), |_| {});
     }
+
+    fn mark_keys_not_found(&self, keys: Vec<K>) {
+        for key in keys {
+            // Insert `CacheState::NotFound` if the cache doesn't already contain the key
+            self.map.insert_or_modify(key, CacheState::NotFound, |_key, current_value| current_value.clone());
+        }
+    }
+}
+
+#[derive(Clone)]
+enum CacheState<V> {
+    Loaded(V),
+    NotFound,
 }
 
 struct CacheLookup<K, V>
@@ -185,7 +200,7 @@ where
     K: Hash + Eq,
 {
     keys: Vec<K>,
-    entries: HashMap<K, Option<V>>,
+    entries: HashMap<K, Option<CacheState<V>>>,
 }
 
 impl<K, V> CacheLookup<K, V>
@@ -236,8 +251,8 @@ where
                 let load_state = self.entries.get(key)
                     .expect("Cache lookup is missing an expected key");
                 match load_state {
-                    Some(value) => Ok(value.clone()),
-                    None => Err(LoadError::NotFound),
+                    Some(CacheState::Loaded(value)) => Ok(value.clone()),
+                    Some(CacheState::NotFound) | None => Err(LoadError::NotFound),
                 }
             })
             .collect()
@@ -268,9 +283,6 @@ pub enum LoadError {
 
     #[error("error sending fetch request")]
     SendError,
-
-    #[error("error during retrieval task")]
-    TaskError(tokio::task::JoinError),
 
     #[error("value not found")]
     NotFound,

@@ -1,4 +1,5 @@
-use ultra_batch::Batcher;
+use async_trait::async_trait;
+use ultra_batch::{Fetcher, Batcher, Cache, LoadError};
 
 mod db;
 mod stubs;
@@ -154,6 +155,195 @@ async fn test_load_batching() -> anyhow::Result<()> {
     for unloaded_user_id in &user_ids[90..] {
         assert_eq!(fetcher.calls_for_key(unloaded_user_id), 0);
     }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_keys_not_returned() -> Result<(), anyhow::Error> {
+    // Fetcher that only returns values for even keys (odd keys are ignored)
+    struct EvenFetcher;
+
+    #[async_trait]
+    impl Fetcher for EvenFetcher {
+        type Key = u64;
+        type Value = u64;
+        type Error = anyhow::Error;
+
+        async fn fetch(&self, keys: &[Self::Key], values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error> {
+            for key in keys {
+                if key % 2 == 0 {
+                    values.insert(*key, *key);
+                }
+            }
+
+            Ok(())
+        }
+    }
+
+    let fetcher = stubs::ObserveFetcher::new(EvenFetcher);
+    let batcher = Batcher::new(fetcher.clone());
+
+    let batch = batcher.load_many(&[2, 4, 6]).await?;
+    assert_eq!(batch, vec![2, 4, 6]);
+    assert_eq!(fetcher.total_calls(), 1);
+    assert_eq!(fetcher.calls_for_key(&2), 1);
+    assert_eq!(fetcher.calls_for_key(&4), 1);
+    assert_eq!(fetcher.calls_for_key(&6), 1);
+
+    let batch_result = batcher.load_many(&[2, 8, 10, 11]).await;
+    assert!(matches!(batch_result, Err(LoadError::NotFound)));
+    assert_eq!(fetcher.total_calls(), 2);
+    assert_eq!(fetcher.calls_for_key(&2), 1);
+    assert_eq!(fetcher.calls_for_key(&8), 1);
+    assert_eq!(fetcher.calls_for_key(&10), 1);
+    assert_eq!(fetcher.calls_for_key(&11), 1);
+
+    let batch = batcher.load_many(&[2, 4, 6, 8, 10]).await?;
+    assert_eq!(batch, vec![2, 4, 6, 8, 10]);
+    assert_eq!(fetcher.total_calls(), 2);
+    assert_eq!(fetcher.calls_for_key(&2), 1);
+    assert_eq!(fetcher.calls_for_key(&4), 1);
+    assert_eq!(fetcher.calls_for_key(&6), 1);
+    assert_eq!(fetcher.calls_for_key(&8), 1);
+    assert_eq!(fetcher.calls_for_key(&10), 1);
+    assert_eq!(fetcher.calls_for_key(&11), 1);
+
+    let batch_result = batcher.load_many(&[11, 12]).await;
+    assert!(matches!(batch_result, Err(LoadError::NotFound)));
+    assert_eq!(fetcher.calls_for_key(&11), 1); // "Not found" status should be cached
+    assert_eq!(fetcher.calls_for_key(&12), 1);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_fetch_error_before_inserting() -> Result<(), anyhow::Error> {
+    // Fetcher that first validates no odd keys are present, then stores even keys
+    struct EvenFetcher;
+
+    #[async_trait]
+    impl Fetcher for EvenFetcher {
+        type Key = u64;
+        type Value = u64;
+        type Error = anyhow::Error;
+
+        async fn fetch(&self, keys: &[Self::Key], values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error> {
+            let (even_keys, mut odd_keys): (Vec<u64>, Vec<u64>) = keys.iter().partition(|&&key| key % 2 == 0);
+
+            // Sort odd keys so we return consistent error messages
+            odd_keys.sort();
+            if !odd_keys.is_empty() {
+                return Err(anyhow::anyhow!("odd keys: {:?}", odd_keys));
+            }
+
+            for key in even_keys {
+                values.insert(key, key);
+            }
+
+            Ok(())
+        }
+    }
+
+    let fetcher = stubs::ObserveFetcher::new(EvenFetcher);
+    let batcher = Batcher::new(fetcher.clone());
+
+    let batch = batcher.load_many(&[2, 4, 6]).await?;
+    assert_eq!(batch, vec![2, 4, 6]);
+    assert_eq!(fetcher.total_calls(), 1);
+    assert_eq!(fetcher.calls_for_key(&2), 1);
+    assert_eq!(fetcher.calls_for_key(&4), 1);
+    assert_eq!(fetcher.calls_for_key(&6), 1);
+
+    let batch_result = batcher.load_many(&[2, 8, 10, 11, 13]).await;
+    assert!(matches!(batch_result, Err(LoadError::FetchError(msg)) if msg == "odd keys: [11, 13]"));
+    assert_eq!(fetcher.total_calls(), 2);
+    assert_eq!(fetcher.calls_for_key(&2), 1);
+    assert_eq!(fetcher.calls_for_key(&8), 1);
+    assert_eq!(fetcher.calls_for_key(&10), 1);
+    assert_eq!(fetcher.calls_for_key(&11), 1);
+    assert_eq!(fetcher.calls_for_key(&13), 1);
+
+    let batch = batcher.load_many(&[2, 4, 6, 8, 10]).await?;
+    assert_eq!(batch, vec![2, 4, 6, 8, 10]);
+    assert_eq!(fetcher.total_calls(), 3);
+    assert_eq!(fetcher.calls_for_key(&2), 1);
+    assert_eq!(fetcher.calls_for_key(&4), 1);
+    assert_eq!(fetcher.calls_for_key(&6), 1);
+    assert_eq!(fetcher.calls_for_key(&8), 2); // Previously errored out, so it should be retried
+    assert_eq!(fetcher.calls_for_key(&10), 2); // Previously errored out, so it should be retried
+    assert_eq!(fetcher.calls_for_key(&11), 1);
+
+    let batch_result = batcher.load_many(&[11, 12]).await;
+    assert!(matches!(batch_result, Err(LoadError::FetchError(msg)) if msg == "odd keys: [11]"));
+    assert_eq!(fetcher.calls_for_key(&11), 2); // Previously errored out, so it should be retried
+    assert_eq!(fetcher.calls_for_key(&12), 1);
+
+    Ok(())
+}
+
+
+#[tokio::test]
+async fn test_fetch_error_after_inserting() -> Result<(), anyhow::Error> {
+    // Fetcher that stores even keys, then errors out if any odd keys are present
+    struct EvenFetcher;
+
+    #[async_trait]
+    impl Fetcher for EvenFetcher {
+        type Key = u64;
+        type Value = u64;
+        type Error = anyhow::Error;
+
+        async fn fetch(&self, keys: &[Self::Key], values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error> {
+            let (even_keys, mut odd_keys): (Vec<u64>, Vec<u64>) = keys.iter().partition(|&&key| key % 2 == 0);
+
+            for key in even_keys {
+                values.insert(key, key);
+            }
+
+            // Sort odd keys so we return consistent error messages
+            odd_keys.sort();
+            if !odd_keys.is_empty() {
+                return Err(anyhow::anyhow!("odd keys: {:?}", odd_keys));
+            }
+
+            Ok(())
+        }
+    }
+
+    let fetcher = stubs::ObserveFetcher::new(EvenFetcher);
+    let batcher = Batcher::new(fetcher.clone());
+
+    let batch = batcher.load_many(&[2, 4, 6]).await?;
+    assert_eq!(batch, vec![2, 4, 6]);
+    assert_eq!(fetcher.total_calls(), 1);
+    assert_eq!(fetcher.calls_for_key(&2), 1);
+    assert_eq!(fetcher.calls_for_key(&4), 1);
+    assert_eq!(fetcher.calls_for_key(&6), 1);
+
+    let batch_result = batcher.load_many(&[2, 8, 10, 11, 13]).await;
+    assert!(matches!(batch_result, Err(LoadError::FetchError(msg)) if msg == "odd keys: [11, 13]"));
+    assert_eq!(fetcher.total_calls(), 2);
+    assert_eq!(fetcher.calls_for_key(&2), 1);
+    assert_eq!(fetcher.calls_for_key(&8), 1);
+    assert_eq!(fetcher.calls_for_key(&10), 1);
+    assert_eq!(fetcher.calls_for_key(&11), 1);
+    assert_eq!(fetcher.calls_for_key(&13), 1);
+
+    let batch = batcher.load_many(&[2, 4, 6, 8, 10]).await?;
+    assert_eq!(batch, vec![2, 4, 6, 8, 10]);
+    assert_eq!(fetcher.total_calls(), 2);
+    assert_eq!(fetcher.calls_for_key(&2), 1);
+    assert_eq!(fetcher.calls_for_key(&4), 1);
+    assert_eq!(fetcher.calls_for_key(&6), 1);
+    assert_eq!(fetcher.calls_for_key(&8), 1); // Saved in previous (failed) batch-- value is still valid
+    assert_eq!(fetcher.calls_for_key(&10), 1); // Saved in previous (failed) batch-- value is still valid
+    assert_eq!(fetcher.calls_for_key(&11), 1);
+
+    let batch_result = batcher.load_many(&[11, 12]).await;
+    assert!(matches!(batch_result, Err(LoadError::FetchError(msg)) if msg == "odd keys: [11]"));
+    assert_eq!(fetcher.calls_for_key(&11), 2); // Previously errored out, so it should be retried
+    assert_eq!(fetcher.calls_for_key(&12), 1);
 
     Ok(())
 }
