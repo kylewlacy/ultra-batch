@@ -16,84 +16,11 @@ impl<F> Batcher<F>
 where
     F: Fetcher + Send + Sync + 'static,
 {
-    pub fn new(fetcher: F) -> Self {
-        let cache = Arc::new(Cache::new());
-        let delay_duration = tokio::time::Duration::from_millis(10);
-        let eager_batch_size = 100;
-
-        let (fetch_request_tx, mut fetch_request_rx) = tokio::sync::mpsc::unbounded_channel::<FetchRequest<F::Key>>();
-
-        let fetch_task = tokio::spawn({
-            let cache = cache.clone();
-            async move {
-                'task: loop {
-                    // Wait for some keys to come in
-                    let mut pending_keys = HashSet::new();
-                    let mut result_txs = vec![];
-                    match fetch_request_rx.recv().await {
-                        Some(fetch_request) => {
-                            for key in fetch_request.keys {
-                                pending_keys.insert(key);
-                            }
-                            result_txs.push(fetch_request.result_tx);
-                        }
-                        None => {
-                            // Fetch queue closed, so we're done
-                            break 'task;
-                        }
-                    };
-
-                    // Wait for more keys
-                    'wait_for_more_keys: loop {
-                        if pending_keys.len() > eager_batch_size {
-                            // We have enough keys already, so don't wait for more
-                            break 'wait_for_more_keys;
-                        }
-
-                        let mut delay = tokio::time::delay_for(delay_duration);
-                        tokio::select! {
-                            fetch_request = fetch_request_rx.recv() => {
-                                match fetch_request {
-                                    Some(fetch_request) => {
-                                        for key in fetch_request.keys {
-                                            pending_keys.insert(key);
-                                        }
-                                        result_txs.push(fetch_request.result_tx);
-                                    }
-                                    None => {
-                                        // Fetch queuie closed, so we're done waiting for keys
-                                        break 'wait_for_more_keys;
-                                    }
-                                }
-
-                            }
-                            _ = &mut delay => {
-                                // Reached delay, so we're done waiting for keys
-                                break 'wait_for_more_keys;
-                            }
-                        }
-                    }
-
-                    let pending_keys: Vec<_> = pending_keys.into_iter().collect();
-                    let result = fetcher.fetch(&pending_keys, &cache).await
-                        .map_err(|error| error.to_string());
-
-                    if result.is_ok() {
-                        cache.mark_keys_not_found(pending_keys);
-                    }
-
-                    for result_tx in result_txs {
-                        // Ignore error if receiver was already closed
-                        let _ = result_tx.send(result.clone());
-                    }
-                }
-            }
-        });
-
-        Batcher {
-            cache,
-            _fetch_task: Arc::new(fetch_task),
-            fetch_request_tx,
+    pub fn new(fetcher: F) -> BatcherBuilder<F> {
+        BatcherBuilder {
+            fetcher,
+            delay_duration: tokio::time::Duration::from_millis(10),
+            eager_batch_size: Some(100),
         }
     }
 
@@ -143,6 +70,113 @@ where
             cache: self.cache.clone(),
             _fetch_task: self._fetch_task.clone(),
             fetch_request_tx: self.fetch_request_tx.clone(),
+        }
+    }
+}
+
+pub struct BatcherBuilder<F>
+where
+    F: Fetcher + Send + Sync + 'static,
+{
+    fetcher: F,
+    delay_duration: tokio::time::Duration,
+    eager_batch_size: Option<usize>,
+}
+
+impl<F> BatcherBuilder<F>
+where
+    F: Fetcher + Send + Sync + 'static,
+{
+    pub fn delay_duration(mut self, delay: tokio::time::Duration) -> Self {
+        self.delay_duration = delay;
+        self
+    }
+
+    pub fn eager_batch_size(mut self, eager_batch_size: Option<usize>) -> Self {
+        self.eager_batch_size = eager_batch_size;
+        self
+    }
+
+    pub fn build(self) -> Batcher<F> {
+        let cache = Arc::new(Cache::new());
+
+        let (fetch_request_tx, mut fetch_request_rx) = tokio::sync::mpsc::unbounded_channel::<FetchRequest<F::Key>>();
+
+        let fetch_task = tokio::spawn({
+            let cache = cache.clone();
+            async move {
+                'task: loop {
+                    // Wait for some keys to come in
+                    let mut pending_keys = HashSet::new();
+                    let mut result_txs = vec![];
+                    match fetch_request_rx.recv().await {
+                        Some(fetch_request) => {
+                            for key in fetch_request.keys {
+                                pending_keys.insert(key);
+                            }
+                            result_txs.push(fetch_request.result_tx);
+                        }
+                        None => {
+                            // Fetch queue closed, so we're done
+                            break 'task;
+                        }
+                    };
+
+                    // Wait for more keys
+                    'wait_for_more_keys: loop {
+                        let should_run_batch_now = match self.eager_batch_size {
+                            Some(eager_batch_size) => pending_keys.len() >= eager_batch_size,
+                            None => false,
+                        };
+                        if should_run_batch_now {
+                            // We have enough keys already, so don't wait for more
+                            break 'wait_for_more_keys;
+                        }
+
+                        let mut delay = tokio::time::delay_for(self.delay_duration);
+                        tokio::select! {
+                            fetch_request = fetch_request_rx.recv() => {
+                                match fetch_request {
+                                    Some(fetch_request) => {
+                                        for key in fetch_request.keys {
+                                            pending_keys.insert(key);
+                                        }
+                                        result_txs.push(fetch_request.result_tx);
+                                    }
+                                    None => {
+                                        // Fetch queuie closed, so we're done waiting for keys
+                                        break 'wait_for_more_keys;
+                                    }
+                                }
+
+                            }
+                            _ = &mut delay => {
+                                // Reached delay, so we're done waiting for keys
+                                break 'wait_for_more_keys;
+                            }
+                        }
+                    }
+
+                    let pending_keys: Vec<_> = pending_keys.into_iter().collect();
+                    let result = self.fetcher.fetch(&pending_keys, &cache).await
+                        .map_err(|error| error.to_string());
+
+                    if result.is_ok() {
+                        cache.mark_keys_not_found(pending_keys);
+                    }
+
+                    for result_tx in result_txs {
+                        // Ignore error if receiver was already closed
+                        let _ = result_tx.send(result.clone());
+                    }
+                }
+            }
+        });
+
+        Batcher {
+            cache,
+            _fetch_task: Arc::new(fetch_task),
+            fetch_request_tx,
         }
     }
 }

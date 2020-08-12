@@ -7,7 +7,7 @@ mod stubs;
 #[tokio::test]
 async fn test_load() -> anyhow::Result<()> {
     let db = db::Database::fake();
-    let batcher = Batcher::new(db::FetchUsers { db: db.clone() });
+    let batcher = Batcher::new(db::FetchUsers { db: db.clone() }).build();
 
     let expected_user = &db.users[0];
 
@@ -20,7 +20,7 @@ async fn test_load() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_load_many_with_one_element() -> anyhow::Result<()> {
     let db = db::Database::fake();
-    let batcher = Batcher::new(db::FetchUsers { db: db.clone() });
+    let batcher = Batcher::new(db::FetchUsers { db: db.clone() }).build();
 
     let expected_user = &db.users[0];
 
@@ -33,7 +33,7 @@ async fn test_load_many_with_one_element() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_load_many_ordering() -> anyhow::Result<()> {
     let db = db::Database::fake();
-    let batcher = Batcher::new(db::FetchUsers { db: db.clone() });
+    let batcher = Batcher::new(db::FetchUsers { db: db.clone() }).build();
 
     let expected_users = &db.users[0..5];
 
@@ -48,7 +48,7 @@ async fn test_load_many_ordering() -> anyhow::Result<()> {
 async fn test_load_fetching() -> anyhow::Result<()> {
     let db = db::Database::fake();
     let fetcher = stubs::ObserveFetcher::new(db::FetchUsers { db: db.clone() });
-    let batcher = Batcher::new(fetcher.clone());
+    let batcher = Batcher::new(fetcher.clone()).build();
 
     let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
 
@@ -80,7 +80,7 @@ async fn test_load_fetching() -> anyhow::Result<()> {
 async fn test_load_caching() -> anyhow::Result<()> {
     let db = db::Database::fake();
     let fetcher = stubs::ObserveFetcher::new(db::FetchUsers { db: db.clone() });
-    let batcher = Batcher::new(fetcher.clone());
+    let batcher = Batcher::new(fetcher.clone()).build();
 
     let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
 
@@ -120,7 +120,7 @@ async fn test_load_caching() -> anyhow::Result<()> {
 async fn test_load_batching() -> anyhow::Result<()> {
     let db = db::Database::fake();
     let fetcher = stubs::ObserveFetcher::new(db::FetchUsers { db: db.clone() });
-    let batcher = Batcher::new(fetcher.clone());
+    let batcher = Batcher::new(fetcher.clone()).build();
 
     let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
 
@@ -160,6 +160,118 @@ async fn test_load_batching() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn test_load_eager_batch_size() -> anyhow::Result<()> {
+    let db = db::Database::fake();
+    let fetcher = stubs::ObserveFetcher::new(db::FetchUsers { db: db.clone() });
+    let batcher = Batcher::new(fetcher.clone()).eager_batch_size(Some(50)).build();
+
+    let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
+
+    let spawn_batcher = |batch: &[uuid::Uuid]| {
+        let batcher = batcher.clone();
+        let batch = batch.to_vec();
+        async move {
+            let task = tokio::spawn(async move { batcher.load_many(&batch).await.unwrap() });
+            task.await.unwrap()
+        }
+    };
+
+    // We should keep batching until hitting the eager batch threshold
+    tokio::join! [
+        spawn_batcher(&user_ids[0..1]),
+        spawn_batcher(&user_ids[0..10]),
+    ];
+    assert_eq!(fetcher.total_calls(), 1);
+    for user_id in &user_ids[0..10] {
+        assert_eq!(fetcher.calls_for_key(user_id), 1);
+    }
+
+    // We should not break up a batch based on the eager batch threshold
+    tokio::join! [
+        spawn_batcher(&user_ids[100..200]),
+    ];
+    assert_eq!(fetcher.total_calls(), 2);
+    for user_id in &user_ids[100..200] {
+        assert_eq!(fetcher.calls_for_key(user_id), 1);
+    }
+
+    // We should keep taking incoming requests until the eager batch threshold is crossed
+    tokio::join! [
+        spawn_batcher(&user_ids[200..250]),
+        spawn_batcher(&user_ids[250..300]),
+    ];
+    assert_eq!(fetcher.total_calls(), 4);
+    for user_id in &user_ids[200..300] {
+        assert_eq!(fetcher.calls_for_key(user_id), 1);
+    }
+
+    // The eager batch threshold should only be based on the number of keys that weren't already cached
+    tokio::join! [
+        spawn_batcher(&user_ids[290..349]),
+        spawn_batcher(&user_ids[349..400]),
+    ];
+    assert_eq!(fetcher.total_calls(), 5);
+    for user_id in &user_ids[290..400] {
+        assert_eq!(fetcher.calls_for_key(user_id), 1);
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_load_no_eager_batch_size() -> anyhow::Result<()> {
+    let db = db::Database::fake();
+    let fetcher = stubs::ObserveFetcher::new(db::FetchUsers { db: db.clone() });
+    let batcher = Batcher::new(fetcher.clone()).eager_batch_size(None).build();
+
+    let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
+
+    let tasks: Vec<_> = user_ids.iter().cloned().map(|user_id| {
+        let batcher = batcher.clone();
+        tokio::spawn(async move { batcher.load(user_id).await.unwrap() })
+    }).collect();
+
+    for task in tasks {
+        task.await?;
+    }
+
+    // When no eager batch size is set, we should just keep accepting new keys into the batch (assuming
+    // we don't exceed the delay duration)
+    assert_eq!(fetcher.total_calls(), 1);
+    for user_id in &user_ids {
+        assert_eq!(fetcher.calls_for_key(user_id), 1);
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_batch_delay() -> anyhow::Result<()> {
+    let db = db::Database::fake();
+    let fetcher = stubs::ObserveFetcher::new(db::FetchUsers { db: db.clone() });
+    let batcher = Batcher::new(fetcher.clone())
+        .delay_duration(tokio::time::Duration::from_millis(10))
+        .eager_batch_size(None)
+        .build();
+
+    let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
+
+    // Batch run if we exceed the delay duration
+    let batch_task = tokio::spawn({
+        let batcher = batcher.clone();
+        let user_id = user_ids[0];
+        async move { batcher.load(user_id).await }
+    });
+    assert_eq!(fetcher.total_calls(), 0);
+    tokio::time::delay_for(tokio::time::Duration::from_millis(100)).await;
+    assert_eq!(fetcher.total_calls(), 1);
+    batch_task.await??;
+    assert_eq!(fetcher.total_calls(), 1);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_keys_not_returned() -> Result<(), anyhow::Error> {
     // Fetcher that only returns values for even keys (odd keys are ignored)
     struct EvenFetcher;
@@ -182,7 +294,7 @@ async fn test_keys_not_returned() -> Result<(), anyhow::Error> {
     }
 
     let fetcher = stubs::ObserveFetcher::new(EvenFetcher);
-    let batcher = Batcher::new(fetcher.clone());
+    let batcher = Batcher::new(fetcher.clone()).build();
 
     let batch = batcher.load_many(&[2, 4, 6]).await?;
     assert_eq!(batch, vec![2, 4, 6]);
@@ -246,7 +358,7 @@ async fn test_fetch_error_before_inserting() -> Result<(), anyhow::Error> {
     }
 
     let fetcher = stubs::ObserveFetcher::new(EvenFetcher);
-    let batcher = Batcher::new(fetcher.clone());
+    let batcher = Batcher::new(fetcher.clone()).build();
 
     let batch = batcher.load_many(&[2, 4, 6]).await?;
     assert_eq!(batch, vec![2, 4, 6]);
@@ -312,7 +424,7 @@ async fn test_fetch_error_after_inserting() -> Result<(), anyhow::Error> {
     }
 
     let fetcher = stubs::ObserveFetcher::new(EvenFetcher);
-    let batcher = Batcher::new(fetcher.clone());
+    let batcher = Batcher::new(fetcher.clone()).build();
 
     let batch = batcher.load_many(&[2, 4, 6]).await?;
     assert_eq!(batch, vec![2, 4, 6]);
