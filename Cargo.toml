@@ -17,4 +17,9 @@ tokio-postponable-delay = "0.1.0"
 uuid = "0.8.1"
 anyhow = "1.0.32"
 fakeit = "1.1.1"
+criterion = "0.3.3"
 tokio = { version = "0.2.22", default-features = false, features = ["full"] }
+
+[[bench]]
+name = "batcher"
+harness = false
