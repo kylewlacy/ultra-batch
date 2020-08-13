@@ -1,7 +1,7 @@
-use std::sync::Arc;
 use async_trait::async_trait;
+use std::sync::Arc;
+use ultra_batch::{Cache, Fetcher};
 use uuid::Uuid;
-use ultra_batch::{Fetcher, Cache};
 
 pub struct Database {
     pub users: Vec<User>,
@@ -11,32 +11,36 @@ pub struct Database {
 
 impl Database {
     pub fn fake() -> Arc<Self> {
-        let users: Vec<_> = (0..1000).map(|_| {
-            User {
+        let users: Vec<_> = (0..1000)
+            .map(|_| User {
                 id: Uuid::new_v4(),
                 name: fakeit::name::full(),
-            }
-        }).collect();
-        let posts: Vec<_> = users.iter().enumerate().flat_map(|(n, user)| {
-            (0..(n % 3)).map(move |_| {
-                Post {
+            })
+            .collect();
+        let posts: Vec<_> = users
+            .iter()
+            .enumerate()
+            .flat_map(|(n, user)| {
+                (0..(n % 3)).map(move |_| Post {
                     id: Uuid::new_v4(),
                     user_id: user.id,
                     body: fakeit::words::sentence(3),
-                }
+                })
             })
-        }).collect();
-        let comments: Vec<_> = posts.iter().enumerate().flat_map(|(n, post)| {
-            let commenter = &users[n % users.len()];
-            (0..3).map(move |_| {
-                Comment {
+            .collect();
+        let comments: Vec<_> = posts
+            .iter()
+            .enumerate()
+            .flat_map(|(n, post)| {
+                let commenter = &users[n % users.len()];
+                (0..3).map(move |_| Comment {
                     id: Uuid::new_v4(),
                     post_id: post.id,
                     user_id: commenter.id,
                     comment: fakeit::words::sentence(2),
-                }
+                })
             })
-        }).collect();
+            .collect();
 
         let db = Database {
             users,
@@ -78,7 +82,11 @@ impl Fetcher for FetchUsers {
     type Value = User;
     type Error = anyhow::Error;
 
-    async fn fetch(&self, keys: &[Self::Key], values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error> {
+    async fn fetch(
+        &self,
+        keys: &[Self::Key],
+        values: &Cache<Self::Key, Self::Value>,
+    ) -> Result<(), Self::Error> {
         for key in keys {
             if let Some(user) = self.db.users.iter().find(|user| user.id == *key) {
                 values.insert(*key, user.clone())

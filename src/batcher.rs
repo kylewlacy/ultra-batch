@@ -1,7 +1,7 @@
+use crate::cache::{CacheLookup, CacheLookupState};
+use crate::{Cache, Fetcher};
 use std::collections::HashSet;
 use std::sync::Arc;
-use crate::{Cache, Fetcher};
-use crate::cache::{CacheLookup, CacheLookupState};
 
 /// Used to batch and cache loads from some datastore. A `Batcher` can be used
 /// with any type that implements [`Fetcher`](trait.Fetcher.html). `Batcher`s
@@ -145,18 +145,26 @@ where
         let mut cache_lookup = CacheLookup::new(keys.to_vec());
 
         match cache_lookup.lookup(&self.cache) {
-            CacheLookupState::Done(result) => { return result; }
-            CacheLookupState::Pending => { }
+            CacheLookupState::Done(result) => {
+                return result;
+            }
+            CacheLookupState::Pending => {}
         }
         let pending_keys = cache_lookup.pending_keys();
 
         let mut fetch_request_tx = self.fetch_request_tx.clone();
         let (result_tx, result_rx) = tokio::sync::oneshot::channel();
-        let fetch_request = FetchRequest { keys: pending_keys, result_tx };
-        fetch_request_tx.send(fetch_request).await.map_err(|_| LoadError::SendError)?;
+        let fetch_request = FetchRequest {
+            keys: pending_keys,
+            result_tx,
+        };
+        fetch_request_tx
+            .send(fetch_request)
+            .await
+            .map_err(|_| LoadError::SendError)?;
 
         match result_rx.await {
-            Ok(Ok(())) => { }
+            Ok(Ok(())) => {}
             Ok(Err(fetch_error)) => {
                 return Err(LoadError::FetchError(fetch_error));
             }
@@ -166,7 +174,9 @@ where
         }
 
         match cache_lookup.lookup(&self.cache) {
-            CacheLookupState::Done(result) => { return result; }
+            CacheLookupState::Done(result) => {
+                return result;
+            }
             CacheLookupState::Pending => {
                 panic!("Batch result is still pending after result channel was sent");
             }
@@ -229,7 +239,8 @@ where
     pub fn build(self) -> Batcher<F> {
         let cache = Arc::new(Cache::new());
 
-        let (fetch_request_tx, mut fetch_request_rx) = tokio::sync::mpsc::channel::<FetchRequest<F::Key>>(1);
+        let (fetch_request_tx, mut fetch_request_rx) =
+            tokio::sync::mpsc::channel::<FetchRequest<F::Key>>(1);
 
         let fetch_task = tokio::spawn({
             let cache = cache.clone();
@@ -287,7 +298,10 @@ where
                     }
 
                     let pending_keys: Vec<_> = pending_keys.into_iter().collect();
-                    let result = self.fetcher.fetch(&pending_keys, &cache).await
+                    let result = self
+                        .fetcher
+                        .fetch(&pending_keys, &cache)
+                        .await
                         .map_err(|error| error.to_string());
 
                     if result.is_ok() {

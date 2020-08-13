@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use ultra_batch::{Fetcher, Cache};
 use std::collections::HashMap;
 use std::sync::{atomic, Arc, RwLock};
+use ultra_batch::{Cache, Fetcher};
 
 #[derive(Debug, Default, Clone)]
 pub struct Counter {
@@ -49,7 +49,10 @@ where
 
     pub fn calls_for_key(&self, key: &F::Key) -> usize {
         let calls_per_key = self.calls_per_key.read().unwrap();
-        calls_per_key.get(key).map(|count| count.count()).unwrap_or_default()
+        calls_per_key
+            .get(key)
+            .map(|count| count.count())
+            .unwrap_or_default()
     }
 }
 
@@ -75,7 +78,11 @@ where
     type Value = F::Value;
     type Error = F::Error;
 
-    async fn fetch(&self, keys: &[Self::Key], values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error> {
+    async fn fetch(
+        &self,
+        keys: &[Self::Key],
+        values: &Cache<Self::Key, Self::Value>,
+    ) -> Result<(), Self::Error> {
         {
             self.total_calls.inc();
             let mut calls_per_key = self.calls_per_key.write().unwrap();

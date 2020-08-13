@@ -1,6 +1,6 @@
+use crate::LoadError;
 use std::collections::HashMap;
 use std::hash::Hash;
-use crate::LoadError;
 
 /// Holds the results of loading a batch of data from a [`Fetcher`](trait.Fetcher.html).
 /// Implementors of [`Fetcher`](trait.Fetcher.html) should call [`insert`](struct.Cache.html#method.insert)
@@ -28,7 +28,10 @@ where
     pub(crate) fn mark_keys_not_found(&self, keys: Vec<K>) {
         for key in keys {
             // Insert `CacheState::NotFound` if the cache doesn't already contain the key
-            self.map.insert_or_modify(key, CacheState::NotFound, |_key, current_value| current_value.clone());
+            self.map
+                .insert_or_modify(key, CacheState::NotFound, |_key, current_value| {
+                    current_value.clone()
+                });
         }
     }
 }
@@ -54,36 +57,29 @@ where
 {
     pub(crate) fn new(keys: Vec<K>) -> Self {
         let entries = keys.iter().map(|key| (key.clone(), None)).collect();
-        CacheLookup {
-            keys,
-            entries,
-        }
+        CacheLookup { keys, entries }
     }
 
     pub(crate) fn reload_keys_from_cache(&mut self, cache: &Cache<K, V>) {
         let keys: Vec<K> = self.entries.keys().into_iter().cloned().collect();
         for key in keys {
-            self.entries.entry(key.clone()).and_modify(|mut load_state| {
-                match load_state {
-                    Some(_) => {
-
-                    }
+            self.entries
+                .entry(key.clone())
+                .and_modify(|mut load_state| match load_state {
+                    Some(_) => {}
                     ref mut load_state @ None => {
                         **load_state = cache.map.get(&key);
                     }
-                }
-            });
+                });
         }
     }
 
     pub(crate) fn pending_keys(&self) -> Vec<K> {
         self.entries
             .iter()
-            .filter_map(|(key, value)| {
-                match value {
-                    None => Some(key.clone()),
-                    Some(_) => None,
-                }
+            .filter_map(|(key, value)| match value {
+                None => Some(key.clone()),
+                Some(_) => None,
             })
             .collect()
     }
@@ -92,7 +88,9 @@ where
         self.keys
             .iter()
             .map(|key| {
-                let load_state = self.entries.get(key)
+                let load_state = self
+                    .entries
+                    .get(key)
                     .expect("Cache lookup is missing an expected key");
                 match load_state {
                     Some(CacheState::Loaded(value)) => Ok(value.clone()),
@@ -108,8 +106,7 @@ where
 
         if pending_keys.is_empty() {
             CacheLookupState::Done(self.lookup_result())
-        }
-        else {
+        } else {
             CacheLookupState::Pending
         }
     }

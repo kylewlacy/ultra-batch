@@ -1,7 +1,7 @@
-use async_trait::async_trait;
-use std::hash::Hash;
-use std::fmt::Display;
 use crate::Cache;
+use async_trait::async_trait;
+use std::fmt::Display;
+use std::hash::Hash;
 
 /// A trait for fetching values from some datastore in bulk. A `Fetcher`
 /// will be given an array of keys and should insert fetched values into
@@ -67,5 +67,9 @@ pub trait Fetcher {
     /// with the message from returned error (note that any values inserted into
     /// `values` before the `Err(_)` is returned will still be cached). See
     /// the [`Batcher`](struct.Batcher.html) docs for more details.
-    async fn fetch(&self, keys: &[Self::Key], values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error>;
+    async fn fetch(
+        &self,
+        keys: &[Self::Key],
+        values: &Cache<Self::Key, Self::Value>,
+    ) -> Result<(), Self::Error>;
 }

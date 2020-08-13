@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use ultra_batch::{Fetcher, Batcher, Cache, LoadError};
+use ultra_batch::{Batcher, Cache, Fetcher, LoadError};
 
 mod db;
 mod stubs;
@@ -133,7 +133,7 @@ async fn test_load_batching() -> anyhow::Result<()> {
         }
     };
 
-    tokio::join! [
+    tokio::join![
         spawn_batcher(&user_ids[0..1]),
         spawn_batcher(&user_ids[0..10]),
         spawn_batcher(&user_ids[5..15]),
@@ -163,7 +163,9 @@ async fn test_load_batching() -> anyhow::Result<()> {
 async fn test_load_eager_batch_size() -> anyhow::Result<()> {
     let db = db::Database::fake();
     let fetcher = stubs::ObserveFetcher::new(db::FetchUsers { db: db.clone() });
-    let batcher = Batcher::new(fetcher.clone()).eager_batch_size(Some(50)).build();
+    let batcher = Batcher::new(fetcher.clone())
+        .eager_batch_size(Some(50))
+        .build();
 
     let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
 
@@ -177,7 +179,7 @@ async fn test_load_eager_batch_size() -> anyhow::Result<()> {
     };
 
     // We should keep batching until hitting the eager batch threshold
-    tokio::join! [
+    tokio::join![
         spawn_batcher(&user_ids[0..1]),
         spawn_batcher(&user_ids[0..10]),
     ];
@@ -187,16 +189,14 @@ async fn test_load_eager_batch_size() -> anyhow::Result<()> {
     }
 
     // We should not break up a batch based on the eager batch threshold
-    tokio::join! [
-        spawn_batcher(&user_ids[100..200]),
-    ];
+    tokio::join![spawn_batcher(&user_ids[100..200]),];
     assert_eq!(fetcher.total_calls(), 2);
     for user_id in &user_ids[100..200] {
         assert_eq!(fetcher.calls_for_key(user_id), 1);
     }
 
     // We should keep taking incoming requests until the eager batch threshold is crossed
-    tokio::join! [
+    tokio::join![
         spawn_batcher(&user_ids[200..250]),
         spawn_batcher(&user_ids[250..300]),
     ];
@@ -206,7 +206,7 @@ async fn test_load_eager_batch_size() -> anyhow::Result<()> {
     }
 
     // The eager batch threshold should only be based on the number of keys that weren't already cached
-    tokio::join! [
+    tokio::join![
         spawn_batcher(&user_ids[290..349]),
         spawn_batcher(&user_ids[349..400]),
     ];
@@ -226,10 +226,14 @@ async fn test_load_no_eager_batch_size() -> anyhow::Result<()> {
 
     let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
 
-    let tasks: Vec<_> = user_ids.iter().cloned().map(|user_id| {
-        let batcher = batcher.clone();
-        tokio::spawn(async move { batcher.load(user_id).await.unwrap() })
-    }).collect();
+    let tasks: Vec<_> = user_ids
+        .iter()
+        .cloned()
+        .map(|user_id| {
+            let batcher = batcher.clone();
+            tokio::spawn(async move { batcher.load(user_id).await.unwrap() })
+        })
+        .collect();
 
     for task in tasks {
         task.await?;
@@ -282,7 +286,11 @@ async fn test_insert_extra_keys() -> Result<(), anyhow::Error> {
         type Value = u64;
         type Error = anyhow::Error;
 
-        async fn fetch(&self, keys: &[Self::Key], values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error> {
+        async fn fetch(
+            &self,
+            keys: &[Self::Key],
+            values: &Cache<Self::Key, Self::Value>,
+        ) -> Result<(), Self::Error> {
             values.insert(1, 1);
             for key in keys {
                 values.insert(*key, *key);
@@ -333,7 +341,11 @@ async fn test_keys_not_returned() -> Result<(), anyhow::Error> {
         type Value = u64;
         type Error = anyhow::Error;
 
-        async fn fetch(&self, keys: &[Self::Key], values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error> {
+        async fn fetch(
+            &self,
+            keys: &[Self::Key],
+            values: &Cache<Self::Key, Self::Value>,
+        ) -> Result<(), Self::Error> {
             for key in keys {
                 if key % 2 == 0 {
                     values.insert(*key, *key);
@@ -391,8 +403,13 @@ async fn test_fetch_error_before_inserting() -> Result<(), anyhow::Error> {
         type Value = u64;
         type Error = anyhow::Error;
 
-        async fn fetch(&self, keys: &[Self::Key], values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error> {
-            let (even_keys, mut odd_keys): (Vec<u64>, Vec<u64>) = keys.iter().partition(|&&key| key % 2 == 0);
+        async fn fetch(
+            &self,
+            keys: &[Self::Key],
+            values: &Cache<Self::Key, Self::Value>,
+        ) -> Result<(), Self::Error> {
+            let (even_keys, mut odd_keys): (Vec<u64>, Vec<u64>) =
+                keys.iter().partition(|&&key| key % 2 == 0);
 
             // Sort odd keys so we return consistent error messages
             odd_keys.sort();
@@ -445,7 +462,6 @@ async fn test_fetch_error_before_inserting() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-
 #[tokio::test]
 async fn test_fetch_error_after_inserting() -> Result<(), anyhow::Error> {
     // Fetcher that stores even keys, then errors out if any odd keys are present
@@ -457,8 +473,13 @@ async fn test_fetch_error_after_inserting() -> Result<(), anyhow::Error> {
         type Value = u64;
         type Error = anyhow::Error;
 
-        async fn fetch(&self, keys: &[Self::Key], values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error> {
-            let (even_keys, mut odd_keys): (Vec<u64>, Vec<u64>) = keys.iter().partition(|&&key| key % 2 == 0);
+        async fn fetch(
+            &self,
+            keys: &[Self::Key],
+            values: &Cache<Self::Key, Self::Value>,
+        ) -> Result<(), Self::Error> {
+            let (even_keys, mut odd_keys): (Vec<u64>, Vec<u64>) =
+                keys.iter().partition(|&&key| key % 2 == 0);
 
             for key in even_keys {
                 values.insert(key, key);
