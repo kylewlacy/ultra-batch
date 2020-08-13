@@ -2,6 +2,9 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use crate::LoadError;
 
+/// Holds the results of loading a batch of data from a [`Fetcher`](trait.Fetcher.html).
+/// Implementors of [`Fetcher`](trait.Fetcher.html) should call [`insert`](struct.Cache.html#method.insert)
+/// for each value that was loaded in a batch request.
 pub struct Cache<K, V> {
     map: cht::HashMap<K, CacheState<V>>,
 }
@@ -17,6 +20,7 @@ where
         }
     }
 
+    /// Insert a value into the cache for the given key.
     pub fn insert(&self, key: K, value: V) {
         self.map.insert_and(key, CacheState::Loaded(value), |_| {});
     }
