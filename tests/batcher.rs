@@ -272,6 +272,57 @@ async fn test_batch_delay() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn test_insert_extra_keys() -> Result<(), anyhow::Error> {
+    // Fetcher that returns the input value, and also always inserts the value 1
+    struct OneFetcher;
+
+    #[async_trait]
+    impl Fetcher for OneFetcher {
+        type Key = u64;
+        type Value = u64;
+        type Error = anyhow::Error;
+
+        async fn fetch(&self, keys: &[Self::Key], values: &Cache<Self::Key, Self::Value>) -> Result<(), Self::Error> {
+            values.insert(1, 1);
+            for key in keys {
+                values.insert(*key, *key);
+            }
+
+            Ok(())
+        }
+    }
+
+    let fetcher = stubs::ObserveFetcher::new(OneFetcher);
+    let batcher = Batcher::new(fetcher.clone()).build();
+
+    let batch = batcher.load_many(&[2, 3, 4]).await?;
+    assert_eq!(batch, vec![2, 3, 4]);
+    assert_eq!(fetcher.total_calls(), 1);
+    assert_eq!(fetcher.calls_for_key(&1), 0);
+    assert_eq!(fetcher.calls_for_key(&2), 1);
+    assert_eq!(fetcher.calls_for_key(&3), 1);
+    assert_eq!(fetcher.calls_for_key(&4), 1);
+
+    let batch = batcher.load(1).await?;
+    assert_eq!(batch, 1);
+    assert_eq!(fetcher.total_calls(), 1);
+    assert_eq!(fetcher.calls_for_key(&1), 0);
+    assert_eq!(fetcher.calls_for_key(&2), 1);
+    assert_eq!(fetcher.calls_for_key(&3), 1);
+    assert_eq!(fetcher.calls_for_key(&4), 1);
+
+    let batch = batcher.load_many(&[1, 2, 3]).await?;
+    assert_eq!(batch, vec![1, 2, 3]);
+    assert_eq!(fetcher.total_calls(), 1);
+    assert_eq!(fetcher.calls_for_key(&1), 0);
+    assert_eq!(fetcher.calls_for_key(&2), 1);
+    assert_eq!(fetcher.calls_for_key(&3), 1);
+    assert_eq!(fetcher.calls_for_key(&4), 1);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_keys_not_returned() -> Result<(), anyhow::Error> {
     // Fetcher that only returns values for even keys (odd keys are ignored)
     struct EvenFetcher;
