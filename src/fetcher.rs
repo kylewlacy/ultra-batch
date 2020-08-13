@@ -36,7 +36,7 @@ use std::hash::Hash;
 ///     type Value = User;
 ///     type Error = anyhow::Error;
 ///
-///     async fn fetch(&self, keys: &[UserId], values: &Cache<UserId, User>) -> anyhow::Result<()> {
+///     async fn fetch(&self, keys: &[UserId], values: &mut Cache<'_, UserId, User>) -> anyhow::Result<()> {
 ///         let users = self.db_conn.get_users_by_ids(keys).await?;
 ///         for user in users {
 ///             values.insert(user.id, user);
@@ -70,6 +70,6 @@ pub trait Fetcher {
     async fn fetch(
         &self,
         keys: &[Self::Key],
-        values: &Cache<Self::Key, Self::Value>,
+        values: &mut Cache<'_, Self::Key, Self::Value>,
     ) -> Result<(), Self::Error>;
 }

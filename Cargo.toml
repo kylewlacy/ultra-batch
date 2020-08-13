@@ -9,7 +9,6 @@ edition = "2018"
 [dependencies]
 tokio = { version = "0.2.22", default-features = false, features = ["rt-core", "stream", "sync", "time"] }
 async-trait = "0.1.36"
-cht = "0.4.1"
 thiserror = "1.0.20"
 
 [dev-dependencies]

@@ -81,7 +81,7 @@ where
     async fn fetch(
         &self,
         keys: &[Self::Key],
-        values: &Cache<Self::Key, Self::Value>,
+        values: &mut Cache<'_, Self::Key, Self::Value>,
     ) -> Result<(), Self::Error> {
         {
             self.total_calls.inc();

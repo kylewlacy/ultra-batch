@@ -84,8 +84,8 @@ impl Fetcher for FetchUsers {
 
     async fn fetch(
         &self,
-        keys: &[Self::Key],
-        values: &Cache<Self::Key, Self::Value>,
+        keys: &[Uuid],
+        values: &mut Cache<'_, Uuid, User>,
     ) -> Result<(), Self::Error> {
         for key in keys {
             if let Some(user) = self.db.users.iter().find(|user| user.id == *key) {

@@ -288,8 +288,8 @@ async fn test_insert_extra_keys() -> Result<(), anyhow::Error> {
 
         async fn fetch(
             &self,
-            keys: &[Self::Key],
-            values: &Cache<Self::Key, Self::Value>,
+            keys: &[u64],
+            values: &mut Cache<'_, u64, u64>,
         ) -> Result<(), Self::Error> {
             values.insert(1, 1);
             for key in keys {
@@ -343,8 +343,8 @@ async fn test_keys_not_returned() -> Result<(), anyhow::Error> {
 
         async fn fetch(
             &self,
-            keys: &[Self::Key],
-            values: &Cache<Self::Key, Self::Value>,
+            keys: &[u64],
+            values: &mut Cache<'_, u64, u64>,
         ) -> Result<(), Self::Error> {
             for key in keys {
                 if key % 2 == 0 {
@@ -405,8 +405,8 @@ async fn test_fetch_error_before_inserting() -> Result<(), anyhow::Error> {
 
         async fn fetch(
             &self,
-            keys: &[Self::Key],
-            values: &Cache<Self::Key, Self::Value>,
+            keys: &[u64],
+            values: &mut Cache<'_, u64, u64>,
         ) -> Result<(), Self::Error> {
             let (even_keys, mut odd_keys): (Vec<u64>, Vec<u64>) =
                 keys.iter().partition(|&&key| key % 2 == 0);
@@ -475,8 +475,8 @@ async fn test_fetch_error_after_inserting() -> Result<(), anyhow::Error> {
 
         async fn fetch(
             &self,
-            keys: &[Self::Key],
-            values: &Cache<Self::Key, Self::Value>,
+            keys: &[u64],
+            values: &mut Cache<'_, u64, u64>,
         ) -> Result<(), Self::Error> {
             let (even_keys, mut odd_keys): (Vec<u64>, Vec<u64>) =
                 keys.iter().partition(|&&key| key % 2 == 0);

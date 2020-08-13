@@ -1,38 +1,48 @@
 use crate::LoadError;
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::sync::Arc;
 
 /// Holds the results of loading a batch of data from a [`Fetcher`](trait.Fetcher.html).
 /// Implementors of [`Fetcher`](trait.Fetcher.html) should call [`insert`](struct.Cache.html#method.insert)
 /// for each value that was loaded in a batch request.
-pub struct Cache<K, V> {
-    map: cht::HashMap<K, CacheState<V>>,
+pub struct Cache<'a, K, V> {
+    map_ref: tokio::sync::RwLockWriteGuard<'a, HashMap<K, CacheState<V>>>,
 }
 
-impl<K, V> Cache<K, V>
+impl<'a, K, V> Cache<'a, K, V>
 where
     K: Clone + Hash + Eq,
     V: Clone,
 {
-    pub(crate) fn new() -> Self {
-        Cache {
-            map: cht::HashMap::new(),
-        }
-    }
-
     /// Insert a value into the cache for the given key.
-    pub fn insert(&self, key: K, value: V) {
-        self.map.insert_and(key, CacheState::Loaded(value), |_| {});
+    pub fn insert(&mut self, key: K, value: V) {
+        self.map_ref.insert(key, CacheState::Loaded(value));
     }
 
-    pub(crate) fn mark_keys_not_found(&self, keys: Vec<K>) {
+    pub(crate) fn mark_keys_not_found(&mut self, keys: Vec<K>) {
         for key in keys {
-            // Insert `CacheState::NotFound` if the cache doesn't already contain the key
-            self.map
-                .insert_or_modify(key, CacheState::NotFound, |_key, current_value| {
-                    current_value.clone()
-                });
+            self.map_ref
+                .entry(key)
+                .or_insert_with(|| CacheState::NotFound);
         }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct CacheStore<K, V> {
+    map: Arc<tokio::sync::RwLock<HashMap<K, CacheState<V>>>>,
+}
+
+impl<K, V> CacheStore<K, V> {
+    pub(crate) fn new() -> Self {
+        let map = Arc::new(tokio::sync::RwLock::new(HashMap::new()));
+        CacheStore { map }
+    }
+
+    pub(crate) async fn as_cache(&'_ self) -> Cache<'_, K, V> {
+        let map_ref = self.map.write().await;
+        Cache { map_ref }
     }
 }
 
@@ -60,7 +70,8 @@ where
         CacheLookup { keys, entries }
     }
 
-    pub(crate) fn reload_keys_from_cache(&mut self, cache: &Cache<K, V>) {
+    pub(crate) async fn reload_keys_from_cache_store(&mut self, cache_store: &CacheStore<K, V>) {
+        let map = cache_store.map.read().await;
         let keys: Vec<K> = self.entries.keys().into_iter().cloned().collect();
         for key in keys {
             self.entries
@@ -68,7 +79,7 @@ where
                 .and_modify(|mut load_state| match load_state {
                     Some(_) => {}
                     ref mut load_state @ None => {
-                        **load_state = cache.map.get(&key);
+                        **load_state = map.get(&key).cloned();
                     }
                 });
         }
@@ -100,8 +111,8 @@ where
             .collect()
     }
 
-    pub(crate) fn lookup(&mut self, cache: &Cache<K, V>) -> CacheLookupState<V> {
-        self.reload_keys_from_cache(cache);
+    pub(crate) async fn lookup(&mut self, cache_store: &CacheStore<K, V>) -> CacheLookupState<V> {
+        self.reload_keys_from_cache_store(cache_store).await;
         let pending_keys = self.pending_keys();
 
         if pending_keys.is_empty() {

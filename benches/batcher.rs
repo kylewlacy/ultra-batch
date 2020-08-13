@@ -10,7 +10,7 @@ impl Fetcher for FetchIdent {
     type Value = u64;
     type Error = anyhow::Error;
 
-    async fn fetch(&self, keys: &[u64], values: &Cache<u64, u64>) -> anyhow::Result<()> {
+    async fn fetch(&self, keys: &[u64], values: &mut Cache<'_, u64, u64>) -> anyhow::Result<()> {
         for key in keys {
             values.insert(*key, *key);
         }

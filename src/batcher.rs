@@ -1,5 +1,5 @@
-use crate::cache::{CacheLookup, CacheLookupState};
-use crate::{Cache, Fetcher};
+use crate::cache::{CacheLookup, CacheLookupState, CacheStore};
+use crate::Fetcher;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -47,7 +47,7 @@ pub struct Batcher<F>
 where
     F: Fetcher,
 {
-    cache: Arc<Cache<F::Key, F::Value>>,
+    cache_store: CacheStore<F::Key, F::Value>,
     _fetch_task: Arc<tokio::task::JoinHandle<()>>,
     fetch_request_tx: tokio::sync::mpsc::Sender<FetchRequest<F::Key>>,
 }
@@ -77,7 +77,7 @@ where
     /// #     type Key = ();
     /// #     type Value = ();
     /// #     type Error = anyhow::Error;
-    /// #     async fn fetch(&self, keys: &[()], values: &Cache<(), ()>) -> anyhow::Result<()> {
+    /// #     async fn fetch(&self, keys: &[()], values: &mut Cache<'_, (), ()>) -> anyhow::Result<()> {
     /// #         unimplemented!();
     /// #     }
     /// # }
@@ -103,7 +103,7 @@ where
     /// #     type Key = ();
     /// #     type Value = ();
     /// #     type Error = anyhow::Error;
-    /// #     async fn fetch(&self, keys: &[()], values: &Cache<(), ()>) -> anyhow::Result<()> {
+    /// #     async fn fetch(&self, keys: &[()], values: &mut Cache<'_, (), ()>) -> anyhow::Result<()> {
     /// #         unimplemented!();
     /// #     }
     /// # }
@@ -144,7 +144,7 @@ where
     pub async fn load_many(&self, keys: &[F::Key]) -> Result<Vec<F::Value>, LoadError> {
         let mut cache_lookup = CacheLookup::new(keys.to_vec());
 
-        match cache_lookup.lookup(&self.cache) {
+        match cache_lookup.lookup(&self.cache_store).await {
             CacheLookupState::Done(result) => {
                 return result;
             }
@@ -173,7 +173,7 @@ where
             }
         }
 
-        match cache_lookup.lookup(&self.cache) {
+        match cache_lookup.lookup(&self.cache_store).await {
             CacheLookupState::Done(result) => {
                 return result;
             }
@@ -190,7 +190,7 @@ where
 {
     fn clone(&self) -> Self {
         Batcher {
-            cache: self.cache.clone(),
+            cache_store: self.cache_store.clone(),
             _fetch_task: self._fetch_task.clone(),
             fetch_request_tx: self.fetch_request_tx.clone(),
         }
@@ -237,13 +237,13 @@ where
 
     /// Create and return a `Batcher` with the given options.
     pub fn build(self) -> Batcher<F> {
-        let cache = Arc::new(Cache::new());
+        let cache_store = CacheStore::new();
 
         let (fetch_request_tx, mut fetch_request_rx) =
             tokio::sync::mpsc::channel::<FetchRequest<F::Key>>(1);
 
         let fetch_task = tokio::spawn({
-            let cache = cache.clone();
+            let cache_store = cache_store.clone();
             async move {
                 'task: loop {
                     // Wait for some keys to come in
@@ -297,16 +297,22 @@ where
                         }
                     }
 
-                    let pending_keys: Vec<_> = pending_keys.into_iter().collect();
-                    let result = self
-                        .fetcher
-                        .fetch(&pending_keys, &cache)
-                        .await
-                        .map_err(|error| error.to_string());
+                    let result = {
+                        let mut cache = cache_store.as_cache().await;
 
-                    if result.is_ok() {
-                        cache.mark_keys_not_found(pending_keys);
-                    }
+                        let pending_keys: Vec<_> = pending_keys.into_iter().collect();
+                        let result = self
+                            .fetcher
+                            .fetch(&pending_keys, &mut cache)
+                            .await
+                            .map_err(|error| error.to_string());
+
+                        if result.is_ok() {
+                            cache.mark_keys_not_found(pending_keys);
+                        }
+
+                        result
+                    };
 
                     for result_tx in result_txs {
                         // Ignore error if receiver was already closed
@@ -317,7 +323,7 @@ where
         });
 
         Batcher {
-            cache,
+            cache_store,
             _fetch_task: Arc::new(fetch_task),
             fetch_request_tx,
         }
