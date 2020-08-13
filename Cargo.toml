@@ -11,7 +11,6 @@ tokio = { version = "0.2.22", default-features = false, features = ["rt-core", "
 async-trait = "0.1.36"
 cht = "0.4.1"
 thiserror = "1.0.20"
-tokio-postponable-delay = "0.1.0"
 
 [dev-dependencies]
 uuid = "0.8.1"
