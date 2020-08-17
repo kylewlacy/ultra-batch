@@ -2,6 +2,7 @@
 
 [![Crate](https://img.shields.io/crates/v/ultra-batch)](https://crates.io/crates/ultra-batch)
 [![Docs](https://docs.rs/ultra-batch/badge.svg)](https://docs.rs/ultra-batch)
+[![Tests](https://github.com/kylewlacy/ultra-batch/workflows/Tests/badge.svg)](https://github.com/kylewlacy/ultra-batch/actions)
 
 `ultra-batch` is a Rust library to batch and cache database queries or other potentially expensive data lookups. The main motivation for this library is to solve the ["N + 1" query problem](https://stackoverflow.com/q/97197) seen in GraphQL and elsewhere. This library takes heavy influence from the GraphQL Foundation's [DataLoader](https://github.com/graphql/dataloader). It's designed primarily for dealing with database queries, but it can be used to batch any potentially expensive data loading operations.
 
