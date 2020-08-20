@@ -142,10 +142,15 @@ where
     /// See the type-level docs for [`Batcher`](#load-semantics) for more
     /// detailed loading semantics.
     pub async fn load_many(&self, keys: &[F::Key]) -> Result<Vec<F::Value>, LoadError> {
+        log::trace!(
+            "Looking up a batch of keys ({num_keys} key(s))",
+            num_keys=keys.len()
+        );
         let mut cache_lookup = CacheLookup::new(keys.to_vec());
 
         match cache_lookup.lookup(&self.cache_store).await {
             CacheLookupState::Done(result) => {
+                log::trace!("All keys have already been looked up");
                 return result;
             }
             CacheLookupState::Pending => {}
@@ -154,6 +159,11 @@ where
 
         let mut fetch_request_tx = self.fetch_request_tx.clone();
         let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+
+        log::debug!(
+            "Sending a batch of keys to fetch ({num_keys} key(s) still pending)",
+            num_keys=pending_keys.len()
+        );
         let fetch_request = FetchRequest {
             keys: pending_keys,
             result_tx,
@@ -164,8 +174,11 @@ where
             .map_err(|_| LoadError::SendError)?;
 
         match result_rx.await {
-            Ok(Ok(())) => {}
+            Ok(Ok(())) => {
+                log::debug!("Fetch response returned successfully");
+            }
             Ok(Err(fetch_error)) => {
+                log::info!("Error message returned while fetching keys: {}", fetch_error);
                 return Err(LoadError::FetchError(fetch_error));
             }
             Err(recv_error) => {
@@ -175,6 +188,7 @@ where
 
         match cache_lookup.lookup(&self.cache_store).await {
             CacheLookupState::Done(result) => {
+                log::trace!("All keys have now been looked up");
                 return result;
             }
             CacheLookupState::Pending => {
@@ -249,6 +263,8 @@ where
                     // Wait for some keys to come in
                     let mut pending_keys = HashSet::new();
                     let mut result_txs = vec![];
+
+                    log::debug!("Waiting for keys to fetch...");
                     match fetch_request_rx.recv().await {
                         Some(fetch_request) => {
                             for key in fetch_request.keys {
@@ -270,6 +286,10 @@ where
                         };
                         if should_run_batch_now {
                             // We have enough keys already, so don't wait for more
+                            log::trace!(
+                                "Ready to fetch keys ({num_keys} key(s) pending)",
+                                num_keys=pending_keys.len()
+                            );
                             break 'wait_for_more_keys;
                         }
 
@@ -281,10 +301,19 @@ where
                                         for key in fetch_request.keys {
                                             pending_keys.insert(key);
                                         }
+
+                                        log::trace!(
+                                            "Fetch request received ({num_keys} total key(s) pending)",
+                                            num_keys=pending_keys.len()
+                                        );
                                         result_txs.push(fetch_request.result_tx);
                                     }
                                     None => {
-                                        // Fetch queuie closed, so we're done waiting for keys
+                                        // Fetch queue closed, so we're done waiting for keys
+                                        log::debug!(
+                                            "Fetch queue closed ({num_keys} key(s) pending)",
+                                            num_keys=pending_keys.len()
+                                        );
                                         break 'wait_for_more_keys;
                                     }
                                 }
@@ -292,6 +321,10 @@ where
                             }
                             _ = &mut delay => {
                                 // Reached delay, so we're done waiting for keys
+                                log::trace!(
+                                    "Delay reached, ready to send keys ({num_keys} key(s) pending)",
+                                    num_keys=pending_keys.len()
+                                );
                                 break 'wait_for_more_keys;
                             }
                         }
@@ -300,6 +333,10 @@ where
                     let result = {
                         let mut cache = cache_store.as_cache();
 
+                        log::debug!(
+                            "Fetching keys ({num_keys} key(s) to fetch)",
+                            num_keys=pending_keys.len()
+                        );
                         let pending_keys: Vec<_> = pending_keys.into_iter().collect();
                         let result = self
                             .fetcher
