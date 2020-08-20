@@ -298,7 +298,7 @@ where
                     }
 
                     let result = {
-                        let mut cache = cache_store.as_cache().await;
+                        let mut cache = cache_store.as_cache();
 
                         let pending_keys: Vec<_> = pending_keys.into_iter().collect();
                         let result = self

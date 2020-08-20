@@ -1,5 +1,6 @@
 use crate::LoadError;
 use std::collections::HashMap;
+use chashmap::CHashMap;
 use std::hash::Hash;
 use std::sync::Arc;
 
@@ -7,7 +8,7 @@ use std::sync::Arc;
 /// Implementors of [`Fetcher`](trait.Fetcher.html) should call [`insert`](struct.Cache.html#method.insert)
 /// for each value that was loaded in a batch request.
 pub struct Cache<'a, K, V> {
-    map_ref: tokio::sync::RwLockWriteGuard<'a, HashMap<K, CacheState<V>>>,
+    map_ref: &'a CHashMap<K, CacheState<V>>,
 }
 
 impl<'a, K, V> Cache<'a, K, V>
@@ -22,26 +23,26 @@ where
 
     pub(crate) fn mark_keys_not_found(&mut self, keys: Vec<K>) {
         for key in keys {
-            self.map_ref
-                .entry(key)
-                .or_insert_with(|| CacheState::NotFound);
+            self.map_ref.alter(key, |value| {
+                Some(value.unwrap_or(CacheState::NotFound))
+            });
         }
     }
 }
 
 #[derive(Clone)]
 pub(crate) struct CacheStore<K, V> {
-    map: Arc<tokio::sync::RwLock<HashMap<K, CacheState<V>>>>,
+    map: Arc<CHashMap<K, CacheState<V>>>,
 }
 
 impl<K, V> CacheStore<K, V> {
     pub(crate) fn new() -> Self {
-        let map = Arc::new(tokio::sync::RwLock::new(HashMap::new()));
+        let map = Arc::new(CHashMap::new());
         CacheStore { map }
     }
 
-    pub(crate) async fn as_cache(&'_ self) -> Cache<'_, K, V> {
-        let map_ref = self.map.write().await;
+    pub(crate) fn as_cache(&'_ self) -> Cache<'_, K, V> {
+        let map_ref = &*self.map;
         Cache { map_ref }
     }
 }
@@ -71,7 +72,6 @@ where
     }
 
     pub(crate) async fn reload_keys_from_cache_store(&mut self, cache_store: &CacheStore<K, V>) {
-        let map = cache_store.map.read().await;
         let keys: Vec<K> = self.entries.keys().into_iter().cloned().collect();
         for key in keys {
             self.entries
@@ -79,7 +79,7 @@ where
                 .and_modify(|mut load_state| match load_state {
                     Some(_) => {}
                     ref mut load_state @ None => {
-                        **load_state = map.get(&key).cloned();
+                        **load_state = cache_store.map.get(&key).as_deref().cloned();
                     }
                 });
         }

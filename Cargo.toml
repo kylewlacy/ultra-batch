@@ -16,6 +16,7 @@ keywords = ["cache", "batch", "dataloader"]
 tokio = { version = "0.2.22", default-features = false, features = ["rt-core", "stream", "sync", "time", "macros"] }
 async-trait = "0.1.36"
 thiserror = "1.0.20"
+chashmap = "2.2.2"
 
 [dev-dependencies]
 uuid = "0.8.1"
