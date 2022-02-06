@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use ultra_batch::{Batcher, Fetcher, Cache};
+use ultra_batch::{Batcher, Cache, Fetcher};
 
 fn fib(n: usize) -> usize {
     match n {
@@ -10,7 +10,9 @@ fn fib(n: usize) -> usize {
 }
 
 #[derive(Debug, Clone)]
-struct BigValue { items: Vec<bool> }
+struct BigValue {
+    items: Vec<bool>,
+}
 
 // A fetcher that spawns multiple tasks and returns a `Vec` for each key (and
 // also delays for a bit before fetching). This should be a good candidate to
@@ -23,17 +25,25 @@ impl Fetcher for SlowFetcher {
     type Value = BigValue;
     type Error = anyhow::Error;
 
-    async fn fetch(&self, keys: &[usize], values: &mut Cache<'_, usize, BigValue>) -> anyhow::Result<()> {
-        tokio::time::delay_for(tokio::time::Duration::from_millis(15)).await;
+    async fn fetch(
+        &self,
+        keys: &[usize],
+        values: &mut Cache<'_, usize, BigValue>,
+    ) -> anyhow::Result<()> {
+        tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
 
-        let value_tasks = keys.iter().copied().map(|key| {
-            tokio::task::spawn_blocking(move || {
-                let len = (fib(key % 25)) + 1;
-                let items = (0..len).map(|value| value % 2 == 0).collect::<Vec<_>>();
-                let value = BigValue { items };
-                (key, value)
+        let value_tasks = keys
+            .iter()
+            .copied()
+            .map(|key| {
+                tokio::task::spawn_blocking(move || {
+                    let len = (fib(key % 25)) + 1;
+                    let items = (0..len).map(|value| value % 2 == 0).collect::<Vec<_>>();
+                    let value = BigValue { items };
+                    (key, value)
+                })
             })
-        }).collect::<Vec<_>>();
+            .collect::<Vec<_>>();
 
         for task in value_tasks {
             let (key, value) = task.await?;
@@ -46,19 +56,21 @@ impl Fetcher for SlowFetcher {
 
 async fn concurrency_task() -> anyhow::Result<()> {
     let batcher = Batcher::new(SlowFetcher).build();
-    let load_tasks = (0..2000).map(|n| {
-        let key = n / 3;
-        let batcher = batcher.clone();
-        tokio::spawn(async move {
-            let result = batcher.load(key).await?;
+    let load_tasks = (0..2000)
+        .map(|n| {
+            let key = n / 3;
+            let batcher = batcher.clone();
+            tokio::spawn(async move {
+                let result = batcher.load(key).await?;
 
-            if result.items.len() > 0 {
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("length was 0"))
-            }
+                if !result.items.is_empty() {
+                    Ok(())
+                } else {
+                    Err(anyhow::anyhow!("length was 0"))
+                }
+            })
         })
-    }).collect::<Vec<_>>();
+        .collect::<Vec<_>>();
 
     for load_task in load_tasks {
         let () = load_task.await??;
@@ -69,9 +81,8 @@ async fn concurrency_task() -> anyhow::Result<()> {
 
 #[test]
 fn test_concurrency_basic_scheduler() -> anyhow::Result<()> {
-    let mut runtime = tokio::runtime::Builder::new()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .basic_scheduler()
         .build()?;
 
     runtime.block_on(concurrency_task())
@@ -79,10 +90,9 @@ fn test_concurrency_basic_scheduler() -> anyhow::Result<()> {
 
 #[test]
 fn test_concurrency_one_thread() -> anyhow::Result<()> {
-    let mut runtime = tokio::runtime::Builder::new()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .threaded_scheduler()
-        .core_threads(1)
+        .worker_threads(1)
         .build()?;
 
     runtime.block_on(concurrency_task())
@@ -90,10 +100,9 @@ fn test_concurrency_one_thread() -> anyhow::Result<()> {
 
 #[test]
 fn test_concurrency_eight_threads() -> anyhow::Result<()> {
-    let mut runtime = tokio::runtime::Builder::new()
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .threaded_scheduler()
-        .core_threads(8)
+        .worker_threads(8)
         .build()?;
 
     runtime.block_on(concurrency_task())

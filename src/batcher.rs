@@ -146,8 +146,8 @@ where
     pub async fn load_many(&self, keys: &[F::Key]) -> Result<Vec<F::Value>, LoadError> {
         log::trace!(
             "[{label}/load_many] Looking up a batch of keys ({num_keys} key(s))",
-            label=self.label,
-            num_keys=keys.len(),
+            label = self.label,
+            num_keys = keys.len(),
         );
         let mut cache_lookup = CacheLookup::new(keys.to_vec());
 
@@ -155,7 +155,7 @@ where
             CacheLookupState::Done(result) => {
                 log::trace!(
                     "[{label}/load_many] All keys have already been looked up",
-                    label=self.label,
+                    label = self.label,
                 );
                 return result;
             }
@@ -163,7 +163,7 @@ where
         }
         let pending_keys = cache_lookup.pending_keys();
 
-        let mut fetch_request_tx = self.fetch_request_tx.clone();
+        let fetch_request_tx = self.fetch_request_tx.clone();
         let (result_tx, result_rx) = tokio::sync::oneshot::channel();
 
         log::debug!(
@@ -184,22 +184,22 @@ where
             Ok(Ok(())) => {
                 log::debug!(
                     "[{label}/load_many] Fetch response returned successfully",
-                    label=self.label,
+                    label = self.label,
                 );
             }
             Ok(Err(fetch_error)) => {
                 log::info!(
                     "[{label}/load_many] Error message returned while fetching keys: {error}",
-                    label=self.label,
-                    error=fetch_error,
+                    label = self.label,
+                    error = fetch_error,
                 );
                 return Err(LoadError::FetchError(fetch_error));
             }
             Err(recv_error) => {
                 panic!(
                     "Batch result channel for batcher {label} hung up with error: {error}",
-                    label=self.label,
-                    error=recv_error,
+                    label = self.label,
+                    error = recv_error,
                 );
             }
         }
@@ -208,7 +208,7 @@ where
             CacheLookupState::Done(result) => {
                 log::trace!(
                     "[{label}/load_many] All keys have now been looked up",
-                    label=self.label,
+                    label = self.label,
                 );
                 return result;
             }
@@ -300,7 +300,7 @@ where
 
                     log::debug!(
                         "[{label}/fetch_task] Waiting for keys to fetch...",
-                        label=self.label,
+                        label = self.label,
                     );
                     match fetch_request_rx.recv().await {
                         Some(fetch_request) => {
@@ -331,7 +331,8 @@ where
                             break 'wait_for_more_keys;
                         }
 
-                        let mut delay = tokio::time::delay_for(self.delay_duration);
+                        let delay = tokio::time::sleep(self.delay_duration);
+                        tokio::pin!(delay);
                         tokio::select! {
                             fetch_request = fetch_request_rx.recv() => {
                                 match fetch_request {
@@ -376,8 +377,8 @@ where
 
                         log::debug!(
                             "[{label}/fetch_task] Fetching keys ({num_keys} key(s) to fetch)",
-                            label=self.label,
-                            num_keys=pending_keys.len(),
+                            label = self.label,
+                            num_keys = pending_keys.len(),
                         );
                         let pending_keys: Vec<_> = pending_keys.into_iter().collect();
                         let result = self

@@ -13,18 +13,18 @@ keywords = ["cache", "batch", "dataloader"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "0.2.22", default-features = false, features = ["rt-core", "stream", "sync", "time", "macros"] }
-async-trait = "0.1.36"
-thiserror = "1.0.20"
+tokio = { version = "1.16.1", default-features = false, features = ["rt-multi-thread", "macros", "time"] }
+async-trait = "0.1.52"
+thiserror = "1.0.30"
 chashmap = "2.2.2"
-log = "0.4.11"
+log = "0.4.14"
 
 [dev-dependencies]
-uuid = "0.8.1"
-anyhow = "1.0.32"
+uuid = "0.8.2"
+anyhow = "1.0.53"
 fakeit = "1.1.1"
-criterion = "0.3.3"
-tokio = { version = "0.2.22", default-features = false, features = ["full"] }
+criterion = "0.3.5"
+tokio = { version = "1.16.1", default-features = false, features = ["full"] }
 
 [[bench]]
 name = "batcher"
