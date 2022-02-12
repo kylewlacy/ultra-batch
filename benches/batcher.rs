@@ -22,7 +22,7 @@ impl Fetcher for FetchIdent {
 fn bench_batch_simple_load_miss(c: &mut Criterion) {
     let mut group = c.benchmark_group("load misses");
     for size in [250, 1000] {
-        group.bench_with_input("load misses", &size, |b, &size| {
+        group.bench_with_input(size.to_string(), &size, |b, &size| {
             let runtime = tokio::runtime::Runtime::new().unwrap();
 
             let _enter = runtime.enter();
@@ -50,7 +50,7 @@ fn bench_batch_simple_load_miss(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("load hits");
     for size in [250, 1000] {
-        group.bench_with_input("load hits", &size, |b, &size| {
+        group.bench_with_input(size.to_string(), &size, |b, &size| {
             let runtime = tokio::runtime::Runtime::new().unwrap();
             let _enter = runtime.enter();
             let batcher = Batcher::new(FetchIdent).build();
@@ -88,7 +88,7 @@ fn bench_batch_simple_load_miss(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("load hits+misses");
     for size in [250, 1000] {
-        group.bench_with_input("load hits+misses", &size, |b, &size| {
+        group.bench_with_input(size.to_string(), &size, |b, &size| {
             let runtime = tokio::runtime::Runtime::new().unwrap();
             let _enter = runtime.enter();
 
@@ -125,7 +125,7 @@ fn bench_batch_simple_load_miss(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("load_many misses");
     for size in [250, 1000] {
-        group.bench_with_input("load_many misses", &size, |b, &size| {
+        group.bench_with_input(size.to_string(), &size, |b, &size| {
             let runtime = tokio::runtime::Runtime::new().unwrap();
 
             let _enter = runtime.enter();
@@ -158,7 +158,7 @@ fn bench_batch_simple_load_miss(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("load_many hits");
     for size in [250, 1000] {
-        group.bench_with_input("load_many hits", &size, |b, &size| {
+        group.bench_with_input(size.to_string(), &size, |b, &size| {
             let runtime = tokio::runtime::Runtime::new().unwrap();
             let _enter = runtime.enter();
             let batcher = Batcher::new(FetchIdent).build();
@@ -201,7 +201,7 @@ fn bench_batch_simple_load_miss(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("load_many hits+misses");
     for size in [250, 1000] {
-        group.bench_with_input("load_many hits+misses", &size, |b, &size| {
+        group.bench_with_input(size.to_string(), &size, |b, &size| {
             let runtime = tokio::runtime::Runtime::new().unwrap();
             let _enter = runtime.enter();
 
