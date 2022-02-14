@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Breaking
 - **Upgrade from Tokio 0.2.x to Tokio 1.0.x** ([#1](https://github.com/kylewlacy/ultra-batch/pull/1)). Thanks to [@maldrake](https://github.com/maldrake) for contributing this change!
 
+### Changed
+- Switch from [log](https://crates.io/crates/log) to [Tracing](https://crates.io/crates/tracing) crate for logging. For compatibility, the `log` feature of `ultra-batch` can be enabled. This uses the `log` feature of Tracing, so see the [Tracing docs on the `log` feature](https://docs.rs/tracing/0.1.30/tracing/index.html#emitting-log-records) for more details.
+
 ## [v0.1.1] - 2020-08-20
 ### Added
 - Implement logging using Rust's [log](https://crates.io/crates/log) crate. If you're using [`env_logger`](https://crates.io/crates/env_logger) or [`slog-envlogger`](https://crates.io/crates/slog-envlogger), then you can output logs in your app by setting the environment variable `RUST_LOG=ultra_batch=debug` or `RUST_LOG=ultra_batch=trace`.
