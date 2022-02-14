@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::Arc;
 
-/// Holds the results of loading a batch of data from a [`Fetcher`](trait.Fetcher.html).
-/// Implementors of [`Fetcher`](trait.Fetcher.html) should call [`insert`](struct.Cache.html#method.insert)
+/// Holds the results of loading a batch of data from a [`Fetcher`](crate::Fetcher).
+/// Implementors of [`Fetcher`](crate::Fetcher) should call [`insert`](Cache::insert)
 /// for each value that was loaded in a batch request.
 pub struct Cache<'a, K, V> {
     map_ref: &'a CHashMap<K, CacheState<V>>,

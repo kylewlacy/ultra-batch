@@ -4,10 +4,10 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Used to batch and cache loads from some datastore. A `Batcher` can be used
-/// with any type that implements [`Fetcher`](trait.Fetcher.html). `Batcher`s
-/// are asynchronous, and designed to be passed and shared between threads or
-/// tasks. Cloning a `Batcher` is shallow and can be used to use the same
-/// `Fetcher` across multiple threads or tasks.
+/// with any type that implements [`Fetcher`]. `Batcher`s are asynchronous, and
+/// designed to be passed and shared between threads or tasks. Cloning a
+/// `Batcher` is shallow and can be used to use the same `Fetcher` across
+/// multiple threads or tasks.
 ///
 /// A `Batcher` is designed primarily around batching database lookups-- for
 /// example, fetching a user from a user ID, where a signle query to retrieve
@@ -30,17 +30,16 @@ use std::sync::Arc;
 ///
 /// ## Load semantics
 ///
-/// If the underlying `Fetcher` returns an error during the batch request, then
-/// all pending [`load`](struct.Batcher.html#method.load) and [`load_many`](struct.Batcher.html#method.load_many)
-/// requests will fail. Subsequent calls to [`load`](struct.Batcher.html#method.load)
-/// or [`load_many`](struct.Batcher.html#method.load_many) with the same
-/// keys **will retry**.
+/// If the underlying [`Fetcher`] returns an error during the batch request,
+/// then all pending [`load`](Batcher::load) and [`load_many`](Batcher::load_many)
+/// requests will fail. Subsequent calls to [`load`](Batcher::load) or
+/// [`load_many`](Batcher::load_many) with the same keys **will retry**.
 ///
-/// If the underlying `Fetcher` succeeds but does not return a value for a
+/// If the underlying [`Fetcher`] succeeds but does not return a value for a
 /// given key during a batch request, then the `Batcher` will mark that key as
-/// "not found" and an eror value of [`NotFound`](enum.LoadError.html#variant.NotFound)
-/// will be returned to all pending [`load`](struct.Batcher.html#method.load)
-/// and [`load_many`](struct.Batcher.html#method.load_many) requests. The
+/// "not found" and an error value of [`NotFound`](LoadError::NotFound) will be
+/// returned to all pending [`load`](struct.Batcher.html#method.load) and
+/// [`load_many`](struct.Batcher.html#method.load_many) requests. The
 /// "not found" status will be preserved, so subsequent calls with the same key
 /// will fail and **will not retry**.
 pub struct Batcher<F>
@@ -57,10 +56,9 @@ impl<F> Batcher<F>
 where
     F: Fetcher + Send + Sync + 'static,
 {
-    /// Create a new `Batcher` that uses the given `Fetcher` to retrieve data.
-    /// Returns a [`BatcherBuilder`](struct.BatcherBuilder.html), which can be
-    /// used to customize the `Batcher`. Call [`build()`](struct.BatcherBuilder.html#method.build)
-    /// to create the `Batcher`.
+    /// Create a new `Batcher` that uses the given [`Fetcher`] to retrieve data.
+    /// Returns a [`BatcherBuilder`], which can be used to customize the
+    /// `Batcher`. Call [`.build()`](BatcherBuilder::build) to create the `Batcher`.
     ///
     /// # Examples
     ///
@@ -225,8 +223,8 @@ where
     }
 }
 
-/// Used to configure a new [`Batcher`](struct.Batcher.html). A `BatcherBuilder`
-/// is returned from [`Batcher::new()`](struct.Batcher.html#method.new).
+/// Used to configure a new [`Batcher`]. A `BatcherBuilder` is returned from
+/// [`Batcher::new`].
 pub struct BatcherBuilder<F>
 where
     F: Fetcher + Send + Sync + 'static,
@@ -241,37 +239,38 @@ impl<F> BatcherBuilder<F>
 where
     F: Fetcher + Send + Sync + 'static,
 {
-    /// The maximum amount of time the `Batcher` will wait to queue up more
-    /// keys before calling the [`Fetcher`](trait.Fetcher.html).
+    /// The maximum amount of time the [`Batcher`] will wait to queue up more
+    /// keys before calling the [`Fetcher`].
     pub fn delay_duration(mut self, delay: tokio::time::Duration) -> Self {
         self.delay_duration = delay;
         self
     }
 
-    /// The maximum number of keys to wait for before eagerly calling the [`Fetcher`](trait.Fetcher.html).
-    /// A value of `Some(n)` will load the batch once `n` or more keys have
-    /// been queued (or once the timeout set by [`delay_duration`](struct.BatcherBuilder.html#method.delay_duration)
-    /// is reached, whichever comes first). A value of `None` will never eagerly
-    /// dispatch the queue, and the [`Batcher`](struct.Batcher.html) will always
-    /// wait for the timeout set by [`delay_duration`](struct.BatcherBuilder.html#method.delay_duration).
+    /// The maximum number of keys to wait for before eagerly calling the
+    /// [`Fetcher`]. A value of `Some(n)` will load the batch once `n` or more
+    /// keys have been queued (or once the timeout set by
+    /// [`delay_duration`](BatcherBuilder::delay_duration) is reached, whichever
+    /// comes first). A value of `None` will never eagerly dispatch the queue,
+    /// and the [`Batcher`] will always wait for the timeout set by
+    /// [`delay_duration`](BatcherBuilder::delay_duration).
     ///
     /// Note that `eager_batch_size` **does not** set an upper limit on the
-    /// batch! For example, if [`Batcher.load_many`](struct.Batcher.html#method.load_many)
-    /// is called with more than `eager_batch_size` items, then the batch
-    /// will be sent immediately with _all_ of the provided keys.
+    /// batch! For example, if [`Batcher::load_many`] is called with more than
+    /// `eager_batch_size` items, then the batch will be sent immediately with
+    /// _all_ of the provided keys.
     pub fn eager_batch_size(mut self, eager_batch_size: Option<usize>) -> Self {
         self.eager_batch_size = eager_batch_size;
         self
     }
 
-    /// Set a label for the `Batcher`. This is only used to improve diagnostic
+    /// Set a label for the [`Batcher`]. This is only used to improve diagnostic
     /// messages, such as logs.
     pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = label.into();
         self
     }
 
-    /// Create and return a `Batcher` with the given options.
+    /// Create and return a [`Batcher`] with the given options.
     pub fn build(self) -> Batcher<F> {
         let cache_store = CacheStore::new();
 
@@ -395,22 +394,20 @@ struct FetchRequest<K> {
     result_tx: tokio::sync::oneshot::Sender<Result<(), String>>,
 }
 
-/// Error indicating that loading one or more values from a [`Batcher`](struct.Batcher.html)
+/// Error indicating that loading one or more values from a [`Batcher`]
 /// failed.
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
-    /// The [`Fetcher`](trait.Fetcher.html) returned an error while loading
-    /// loading the batch. The message contains the error message specified
-    /// by [`Fetcher::Error`](trait.Fetcher.html#associatedtype.Error).
+    /// The [`Fetcher`] returned an error while loading the batch. The message
+    /// contains the error message specified by [`Fetcher::Error`].
     #[error("error while fetching from batch: {}", _0)]
     FetchError(String),
 
-    /// The request could not be sent to the [`Batcher`](struct.Batcher.html).
+    /// The request could not be sent to the [`Batcher`].
     #[error("error sending fetch request")]
     SendError,
 
-    /// The [`Fetcher`](trait.Fetcher.html) did not return a value for one or
-    /// more keys in the batch.
+    /// The [`Fetcher`] did not return a value for one or more keys in the batch.
     #[error("value not found")]
     NotFound,
 }
