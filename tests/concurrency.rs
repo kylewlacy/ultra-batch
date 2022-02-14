@@ -81,8 +81,8 @@ async fn concurrency_task() -> anyhow::Result<()> {
 
 #[test]
 fn test_concurrency_basic_scheduler() -> anyhow::Result<()> {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
         .build()?;
 
     runtime.block_on(concurrency_task())
