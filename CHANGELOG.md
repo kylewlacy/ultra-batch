@@ -18,6 +18,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 - Initial release!
 
-[Unreleased]: https://github.com/kylewlacy/ultra-batch/compare/v0.1.1...master
+[Unreleased]: https://github.com/kylewlacy/ultra-batch/compare/v0.1.1...main
 [v0.1.1]: https://github.com/kylewlacy/ultra-batch/compare/v0.1.0...v0.1.1
 [v0.1.0]: https://github.com/kylewlacy/ultra-batch/releases/tag/v0.1.0
