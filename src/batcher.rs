@@ -132,8 +132,9 @@ where
     ///
     /// See the type-level docs for [`Batcher`](#load-semantics) for more
     /// detailed loading semantics.
+    #[tracing::instrument(skip_all, fields(batcher = %self.label))]
     pub async fn load(&self, key: F::Key) -> Result<F::Value, LoadError> {
-        let mut values = self.load_many(&[key]).await?;
+        let mut values = self.load_keys(&[key]).await?;
         Ok(values.remove(0))
     }
 
@@ -143,20 +144,18 @@ where
     ///
     /// See the type-level docs for [`Batcher`](#load-semantics) for more
     /// detailed loading semantics.
+    #[tracing::instrument(skip_all, fields(batcher = %self.label, num_keys = keys.len()))]
     pub async fn load_many(&self, keys: &[F::Key]) -> Result<Vec<F::Value>, LoadError> {
-        log::trace!(
-            "[{label}/load_many] Looking up a batch of keys ({num_keys} key(s))",
-            label = self.label,
-            num_keys = keys.len(),
-        );
+        let values = self.load_keys(keys).await?;
+        Ok(values)
+    }
+
+    async fn load_keys(&self, keys: &[F::Key]) -> Result<Vec<F::Value>, LoadError> {
         let mut cache_lookup = CacheLookup::new(keys.to_vec());
 
         match cache_lookup.lookup(&self.cache_store).await {
             CacheLookupState::Done(result) => {
-                log::trace!(
-                    "[{label}/load_many] All keys have already been looked up",
-                    label = self.label,
-                );
+                tracing::debug!(batcher = %self.label, "all keys have already been looked up");
                 return result;
             }
             CacheLookupState::Pending => {}
@@ -166,10 +165,10 @@ where
         let fetch_request_tx = self.fetch_request_tx.clone();
         let (result_tx, result_rx) = tokio::sync::oneshot::channel();
 
-        log::debug!(
-            "[{label}/load_many] Sending a batch of keys to fetch ({num_keys} key(s) still pending)",
-            label=self.label,
-            num_keys=pending_keys.len(),
+        tracing::debug!(
+            num_pending_keys = pending_keys.len(),
+            batcher = %self.label,
+            "sending a batch of keys to fetch",
         );
         let fetch_request = FetchRequest {
             keys: pending_keys,
@@ -182,23 +181,16 @@ where
 
         match result_rx.await {
             Ok(Ok(())) => {
-                log::debug!(
-                    "[{label}/load_many] Fetch response returned successfully",
-                    label = self.label,
-                );
+                tracing::debug!(batcher = %self.label, "fetch response returned successfully");
             }
             Ok(Err(fetch_error)) => {
-                log::info!(
-                    "[{label}/load_many] Error message returned while fetching keys: {error}",
-                    label = self.label,
-                    error = fetch_error,
-                );
+                tracing::info!("error returned while fetching keys: {}", fetch_error);
                 return Err(LoadError::FetchError(fetch_error));
             }
             Err(recv_error) => {
                 panic!(
-                    "Batch result channel for batcher {label} hung up with error: {error}",
-                    label = self.label,
+                    "Batch result channel for batcher {batcher} hung up with error: {error}",
+                    batcher = self.label,
                     error = recv_error,
                 );
             }
@@ -206,16 +198,13 @@ where
 
         match cache_lookup.lookup(&self.cache_store).await {
             CacheLookupState::Done(result) => {
-                log::trace!(
-                    "[{label}/load_many] All keys have now been looked up",
-                    label = self.label,
-                );
-                return result;
+                tracing::debug!("all keys have now been looked up");
+                result
             }
             CacheLookupState::Pending => {
                 panic!(
-                    "Batch result for batcher {label} is still pending after result channel was sent",
-                    label=self.label,
+                    "Batch result for batcher {batcher} is still pending after result channel was sent",
+                    batcher = self.label,
                 );
             }
         }
@@ -298,12 +287,11 @@ where
                     let mut pending_keys = HashSet::new();
                     let mut result_txs = vec![];
 
-                    log::debug!(
-                        "[{label}/fetch_task] Waiting for keys to fetch...",
-                        label = self.label,
-                    );
+                    tracing::trace!(batcher = %self.label, "waiting for keys to fetch...");
                     match fetch_request_rx.recv().await {
                         Some(fetch_request) => {
+                            tracing::trace!(batcher = %self.label, num_fetch_request_keys = fetch_request.keys.len(), "received initial fetch request");
+
                             for key in fetch_request.keys {
                                 pending_keys.insert(key);
                             }
@@ -323,38 +311,33 @@ where
                         };
                         if should_run_batch_now {
                             // We have enough keys already, so don't wait for more
-                            log::trace!(
-                                "[{label}/fetch_task] Ready to fetch keys ({num_keys} key(s) pending)",
-                                label=self.label,
-                                num_keys=pending_keys.len(),
+                            tracing::trace!(
+                                batcher = %self.label,
+                                num_pending_keys = pending_keys.len(),
+                                eager_batch_size = ?self.eager_batch_size,
+                                "batch filled up, ready to fetch keys now",
                             );
+
                             break 'wait_for_more_keys;
                         }
 
                         let delay = tokio::time::sleep(self.delay_duration);
                         tokio::pin!(delay);
+
                         tokio::select! {
                             fetch_request = fetch_request_rx.recv() => {
                                 match fetch_request {
                                     Some(fetch_request) => {
+                                        tracing::trace!(batcher = %self.label, num_fetch_request_keys = fetch_request.keys.len(), "retrieved additional fetch request");
+
                                         for key in fetch_request.keys {
                                             pending_keys.insert(key);
                                         }
-
-                                        log::trace!(
-                                            "[{label}/fetch_task] Fetch request received ({num_keys} total key(s) pending)",
-                                            label=self.label,
-                                            num_keys=pending_keys.len()
-                                        );
                                         result_txs.push(fetch_request.result_tx);
                                     }
                                     None => {
                                         // Fetch queue closed, so we're done waiting for keys
-                                        log::debug!(
-                                            "[{label}/fetch_task] Fetch queue closed ({num_keys} key(s) pending)",
-                                            label=self.label,
-                                            num_keys=pending_keys.len(),
-                                        );
+                                        tracing::debug!(batcher = %self.label, num_pending_keys = pending_keys.len(), "fetch channel closed");
                                         break 'wait_for_more_keys;
                                     }
                                 }
@@ -362,24 +345,20 @@ where
                             }
                             _ = &mut delay => {
                                 // Reached delay, so we're done waiting for keys
-                                log::trace!(
-                                    "[{label}/fetch_task] Delay reached, ready to send keys ({num_keys} key(s) pending)",
-                                    label=self.label,
-                                    num_keys=pending_keys.len(),
+                                tracing::trace!(
+                                    batcher = %self.label,
+                                    num_pending_keys = pending_keys.len(),
+                                    "delay reached while waiting for more keys to fetch"
                                 );
                                 break 'wait_for_more_keys;
                             }
-                        }
+                        };
                     }
 
                     let result = {
                         let mut cache = cache_store.as_cache();
 
-                        log::debug!(
-                            "[{label}/fetch_task] Fetching keys ({num_keys} key(s) to fetch)",
-                            label = self.label,
-                            num_keys = pending_keys.len(),
-                        );
+                        tracing::trace!(batcher = %self.label, num_pending_keys = pending_keys.len(), num_pending_channels = result_txs.len(), "fetching keys");
                         let pending_keys: Vec<_> = pending_keys.into_iter().collect();
                         let result = self
                             .fetcher
