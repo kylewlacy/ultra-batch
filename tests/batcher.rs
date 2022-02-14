@@ -267,7 +267,7 @@ async fn test_batch_delay() -> anyhow::Result<()> {
         async move { batcher.load(user_id).await }
     });
     assert_eq!(fetcher.total_calls(), 0);
-    tokio::time::delay_for(tokio::time::Duration::from_millis(100)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     assert_eq!(fetcher.total_calls(), 1);
     batch_task.await??;
     assert_eq!(fetcher.total_calls(), 1);
@@ -412,7 +412,7 @@ async fn test_fetch_error_before_inserting() -> Result<(), anyhow::Error> {
                 keys.iter().partition(|&&key| key % 2 == 0);
 
             // Sort odd keys so we return consistent error messages
-            odd_keys.sort();
+            odd_keys.sort_unstable();
             if !odd_keys.is_empty() {
                 return Err(anyhow::anyhow!("odd keys: {:?}", odd_keys));
             }
@@ -486,7 +486,7 @@ async fn test_fetch_error_after_inserting() -> Result<(), anyhow::Error> {
             }
 
             // Sort odd keys so we return consistent error messages
-            odd_keys.sort();
+            odd_keys.sort_unstable();
             if !odd_keys.is_empty() {
                 return Err(anyhow::anyhow!("odd keys: {:?}", odd_keys));
             }

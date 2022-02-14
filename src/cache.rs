@@ -1,6 +1,6 @@
 use crate::LoadError;
-use std::collections::HashMap;
 use chashmap::CHashMap;
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::Arc;
 
@@ -23,9 +23,8 @@ where
 
     pub(crate) fn mark_keys_not_found(&mut self, keys: Vec<K>) {
         for key in keys {
-            self.map_ref.alter(key, |value| {
-                Some(value.unwrap_or(CacheState::NotFound))
-            });
+            self.map_ref
+                .alter(key, |value| Some(value.unwrap_or(CacheState::NotFound)));
         }
     }
 }
