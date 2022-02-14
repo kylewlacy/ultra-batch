@@ -23,7 +23,7 @@ log = "0.4.14"
 uuid = "0.8.2"
 anyhow = "^1.0"
 fakeit = "^1.1"
-criterion = "0.3.5"
+criterion = { version = "0.3.5", features = ["html_reports"] }
 tokio = { version = "^1.16", features = ["full"] }
 
 [[bench]]
