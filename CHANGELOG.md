@@ -4,7 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
 ## [Unreleased]
+
+## [v0.2.0] - 2022-02-15
 ### Breaking
 - **Upgrade from Tokio 0.2.x to Tokio 1.0.x** ([#1](https://github.com/kylewlacy/ultra-batch/pull/1)). Thanks to [@maldrake](https://github.com/maldrake) for contributing this change!
 - **Rename `Batcher::new(/* ... */).build()` to `Batcher::build(/* ... */).finish()`**. These new function names are meant to be more idiomatic, and additionally silence a Clipping warning in the project.
@@ -25,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 - Initial release!
 
-[Unreleased]: https://github.com/kylewlacy/ultra-batch/compare/v0.1.1...main
+[Unreleased]: https://github.com/kylewlacy/ultra-batch/compare/v0.2.0...main
+[v0.2.0]: https://github.com/kylewlacy/ultra-batch/compare/v0.1.1...v0.2.0
 [v0.1.1]: https://github.com/kylewlacy/ultra-batch/compare/v0.1.0...v0.1.1
 [v0.1.0]: https://github.com/kylewlacy/ultra-batch/releases/tag/v0.1.0
