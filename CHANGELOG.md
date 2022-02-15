@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 ### Breaking
 - **Upgrade from Tokio 0.2.x to Tokio 1.0.x** ([#1](https://github.com/kylewlacy/ultra-batch/pull/1)). Thanks to [@maldrake](https://github.com/maldrake) for contributing this change!
+- **Rename `Batcher::new(/* ... */).build()` to `Batcher::build(/* ... */).finish()`**. These new function names are meant to be more idiomatic, and additionally silence a Clipping warning in the project.
 
 ### Changed
 - Switch from [log](https://crates.io/crates/log) to [Tracing](https://crates.io/crates/tracing) crate for logging. For compatibility, the `log` feature of `ultra-batch` can be enabled. This uses the `log` feature of Tracing, so see the [Tracing docs on the `log` feature](https://docs.rs/tracing/0.1.30/tracing/index.html#emitting-log-records) for more details.
