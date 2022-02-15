@@ -19,7 +19,7 @@ jobs:
       with:
         toolchain: ${{ matrix.rust }}
         default: true
-        components: rustfmt
+        components: rustfmt,clippy
     - name: Check formatting
       run: cargo fmt -- --check
     - name: Build
@@ -28,3 +28,5 @@ jobs:
       run: cargo test --verbose
     - name: Run benchmarks
       run: cargo bench
+    - name: Run Clippy
+      run: cargo clippy
