@@ -4,6 +4,7 @@ version = "0.1.1"
 description = "Tokio-based library to batch and cache database queries or other data lookups"
 authors = ["Kyle Lacy <kylelacy+git@pm.me>"]
 edition = "2021"
+rust-version = "1.56"
 repository = "https://github.com/kylewlacy/ultra-batch"
 readme = "README.md"
 license = "MIT OR Apache-2.0"

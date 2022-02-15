@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Breaking
 - **Upgrade from Tokio 0.2.x to Tokio 1.0.x** ([#1](https://github.com/kylewlacy/ultra-batch/pull/1)). Thanks to [@maldrake](https://github.com/maldrake) for contributing this change!
 - **Rename `Batcher::new(/* ... */).build()` to `Batcher::build(/* ... */).finish()`**. These new function names are meant to be more idiomatic, and additionally silence a Clipping warning in the project.
+- **Bump the Minimum Supported Rust Version to v1.56**. The MSRV wasn't tracked previously, but `ultra-batch` did previously work as far back as Rust 1.45.0. Future changes to the MSRV will be documented in the Changelog going forward.
 
 ### Changed
 - Switch from [log](https://crates.io/crates/log) to [Tracing](https://crates.io/crates/tracing) crate for logging. For compatibility, the `log` feature of `ultra-batch` can be enabled. This uses the `log` feature of Tracing, so see the [Tracing docs on the `log` feature](https://docs.rs/tracing/0.1.30/tracing/index.html#emitting-log-records) for more details.

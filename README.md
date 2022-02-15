@@ -65,6 +65,10 @@ async fn main() -> anyhow::Result<()> {
 }
 ```
 
+## Minimum Supported Rust Version (MSRV)
+
+`ultra-batch` currently supports Rust **v1.56**. Changes to the MSRV are tracked in the [Changelog](./CHANGELOG.md).
+
 ## Alternative projects
 
 - [`dataloader-rs`](https://github.com/cksac/dataloader-rs)
