@@ -120,7 +120,7 @@ where
             fetcher,
             delay_duration: tokio::time::Duration::from_millis(10),
             eager_batch_size: Some(100),
-            label: format!("unlabeled-batcher"),
+            label: "unlabeled-batcher".to_string(),
         }
     }
 
