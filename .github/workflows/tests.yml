@@ -1,10 +1,25 @@
 name: Tests
 on: push
 jobs:
-  build:
+  run-tests:
+    name: Run tests (Rust ${{ matrix.rust }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - "1.56.0"
+          - stable
+          - beta
+          - nightly
     steps:
-    - uses: actions/checkout@v2
+    - name: Check out code
+      uses: actions/checkout@v2
+    - name: Install Rust toolchain (${{ matrix.rust }})
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: ${{ matrix.rust }}
+        default: true
+        components: rustfmt
     - name: Check formatting
       run: cargo fmt -- --check
     - name: Build
