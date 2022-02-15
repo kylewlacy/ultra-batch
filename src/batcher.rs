@@ -58,7 +58,7 @@ where
 {
     /// Create a new `Batcher` that uses the given [`Fetcher`] to retrieve data.
     /// Returns a [`BatcherBuilder`], which can be used to customize the
-    /// `Batcher`. Call [`.build()`](BatcherBuilder::build) to create the `Batcher`.
+    /// `Batcher`. Call [`.finish()`](BatcherBuilder::finish) to create the `Batcher`.
     ///
     /// # Examples
     ///
@@ -83,7 +83,7 @@ where
     /// # #[tokio::main] async fn main() -> anyhow::Result<()> {
     /// # let db_conn = ();
     /// let user_fetcher = UserFetcher::new(db_conn);
-    /// let batcher = Batcher::new(user_fetcher).build();
+    /// let batcher = Batcher::build(user_fetcher).finish();
     /// # Ok(())
     /// # }
     /// ```
@@ -109,13 +109,13 @@ where
     /// # #[tokio::main] async fn main() -> anyhow::Result<()> {
     /// # let db_conn = ();
     /// let user_fetcher = UserFetcher::new(db_conn);
-    /// let batcher = Batcher::new(user_fetcher)
+    /// let batcher = Batcher::build(user_fetcher)
     ///     .eager_batch_size(Some(50))
     ///     .delay_duration(tokio::time::Duration::from_millis(5))
-    ///     .build();
+    ///     .finish();
     /// # Ok(()) }
     /// ```
-    pub fn new(fetcher: F) -> BatcherBuilder<F> {
+    pub fn build(fetcher: F) -> BatcherBuilder<F> {
         BatcherBuilder {
             fetcher,
             delay_duration: tokio::time::Duration::from_millis(10),
@@ -224,7 +224,7 @@ where
 }
 
 /// Used to configure a new [`Batcher`]. A `BatcherBuilder` is returned from
-/// [`Batcher::new`].
+/// [`Batcher::build`].
 pub struct BatcherBuilder<F>
 where
     F: Fetcher + Send + Sync + 'static,
@@ -271,7 +271,7 @@ where
     }
 
     /// Create and return a [`Batcher`] with the given options.
-    pub fn build(self) -> Batcher<F> {
+    pub fn finish(self) -> Batcher<F> {
         let cache_store = CacheStore::new();
 
         let (fetch_request_tx, mut fetch_request_rx) =

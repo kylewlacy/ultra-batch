@@ -53,7 +53,7 @@ impl Fetcher for UserFetcher {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let fetcher = UserFetcher { /* ... */ };
-    let batcher = Batcher::new(fetcher).build();
+    let batcher = Batcher::build(fetcher).finish();
 
     // Retrieve a user by ID. If `load` gets called in other tasks/threads
     // at the same time, then all the requested IDs will get batched together

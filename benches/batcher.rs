@@ -27,7 +27,7 @@ fn bench_batch_simple_load_miss(c: &mut Criterion) {
 
             let _enter = runtime.enter();
 
-            let batcher = Batcher::new(FetchIdent).build();
+            let batcher = Batcher::build(FetchIdent).finish();
             let handle = runtime.handle();
             b.iter(|| {
                 let mut tasks = vec![];
@@ -53,7 +53,7 @@ fn bench_batch_simple_load_miss(c: &mut Criterion) {
         group.bench_with_input(size.to_string(), &size, |b, &size| {
             let runtime = tokio::runtime::Runtime::new().unwrap();
             let _enter = runtime.enter();
-            let batcher = Batcher::new(FetchIdent).build();
+            let batcher = Batcher::build(FetchIdent).finish();
             let handle = runtime.handle();
 
             handle.block_on({
@@ -92,7 +92,7 @@ fn bench_batch_simple_load_miss(c: &mut Criterion) {
             let runtime = tokio::runtime::Runtime::new().unwrap();
             let _enter = runtime.enter();
 
-            let batcher = Batcher::new(FetchIdent).build();
+            let batcher = Batcher::build(FetchIdent).finish();
             let handle = runtime.handle();
 
             handle.block_on({
@@ -130,7 +130,7 @@ fn bench_batch_simple_load_miss(c: &mut Criterion) {
 
             let _enter = runtime.enter();
 
-            let batcher = Batcher::new(FetchIdent).build();
+            let batcher = Batcher::build(FetchIdent).finish();
             let handle = runtime.handle();
             b.iter(|| {
                 let mut tasks = vec![];
@@ -161,7 +161,7 @@ fn bench_batch_simple_load_miss(c: &mut Criterion) {
         group.bench_with_input(size.to_string(), &size, |b, &size| {
             let runtime = tokio::runtime::Runtime::new().unwrap();
             let _enter = runtime.enter();
-            let batcher = Batcher::new(FetchIdent).build();
+            let batcher = Batcher::build(FetchIdent).finish();
             let handle = runtime.handle();
 
             handle.block_on({
@@ -205,7 +205,7 @@ fn bench_batch_simple_load_miss(c: &mut Criterion) {
             let runtime = tokio::runtime::Runtime::new().unwrap();
             let _enter = runtime.enter();
 
-            let batcher = Batcher::new(FetchIdent).build();
+            let batcher = Batcher::build(FetchIdent).finish();
             let handle = runtime.handle();
 
             handle.block_on({

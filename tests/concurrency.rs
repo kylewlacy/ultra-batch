@@ -55,7 +55,7 @@ impl Fetcher for SlowFetcher {
 }
 
 async fn concurrency_task() -> anyhow::Result<()> {
-    let batcher = Batcher::new(SlowFetcher).build();
+    let batcher = Batcher::build(SlowFetcher).finish();
     let load_tasks = (0..2000)
         .map(|n| {
             let key = n / 3;

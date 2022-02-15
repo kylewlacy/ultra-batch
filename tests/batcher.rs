@@ -7,7 +7,7 @@ mod stubs;
 #[tokio::test]
 async fn test_load() -> anyhow::Result<()> {
     let db = db::Database::fake();
-    let batcher = Batcher::new(db::FetchUsers { db: db.clone() }).build();
+    let batcher = Batcher::build(db::FetchUsers { db: db.clone() }).finish();
 
     let expected_user = &db.users[0];
 
@@ -20,7 +20,7 @@ async fn test_load() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_load_many_with_one_element() -> anyhow::Result<()> {
     let db = db::Database::fake();
-    let batcher = Batcher::new(db::FetchUsers { db: db.clone() }).build();
+    let batcher = Batcher::build(db::FetchUsers { db: db.clone() }).finish();
 
     let expected_user = &db.users[0];
 
@@ -33,7 +33,7 @@ async fn test_load_many_with_one_element() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_load_many_ordering() -> anyhow::Result<()> {
     let db = db::Database::fake();
-    let batcher = Batcher::new(db::FetchUsers { db: db.clone() }).build();
+    let batcher = Batcher::build(db::FetchUsers { db: db.clone() }).finish();
 
     let expected_users = &db.users[0..5];
 
@@ -48,7 +48,7 @@ async fn test_load_many_ordering() -> anyhow::Result<()> {
 async fn test_load_fetching() -> anyhow::Result<()> {
     let db = db::Database::fake();
     let fetcher = stubs::ObserveFetcher::new(db::FetchUsers { db: db.clone() });
-    let batcher = Batcher::new(fetcher.clone()).build();
+    let batcher = Batcher::build(fetcher.clone()).finish();
 
     let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
 
@@ -80,7 +80,7 @@ async fn test_load_fetching() -> anyhow::Result<()> {
 async fn test_load_caching() -> anyhow::Result<()> {
     let db = db::Database::fake();
     let fetcher = stubs::ObserveFetcher::new(db::FetchUsers { db: db.clone() });
-    let batcher = Batcher::new(fetcher.clone()).build();
+    let batcher = Batcher::build(fetcher.clone()).finish();
 
     let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
 
@@ -120,7 +120,7 @@ async fn test_load_caching() -> anyhow::Result<()> {
 async fn test_load_batching() -> anyhow::Result<()> {
     let db = db::Database::fake();
     let fetcher = stubs::ObserveFetcher::new(db::FetchUsers { db: db.clone() });
-    let batcher = Batcher::new(fetcher.clone()).build();
+    let batcher = Batcher::build(fetcher.clone()).finish();
 
     let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
 
@@ -163,9 +163,9 @@ async fn test_load_batching() -> anyhow::Result<()> {
 async fn test_load_eager_batch_size() -> anyhow::Result<()> {
     let db = db::Database::fake();
     let fetcher = stubs::ObserveFetcher::new(db::FetchUsers { db: db.clone() });
-    let batcher = Batcher::new(fetcher.clone())
+    let batcher = Batcher::build(fetcher.clone())
         .eager_batch_size(Some(50))
-        .build();
+        .finish();
 
     let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
 
@@ -222,7 +222,9 @@ async fn test_load_eager_batch_size() -> anyhow::Result<()> {
 async fn test_load_no_eager_batch_size() -> anyhow::Result<()> {
     let db = db::Database::fake();
     let fetcher = stubs::ObserveFetcher::new(db::FetchUsers { db: db.clone() });
-    let batcher = Batcher::new(fetcher.clone()).eager_batch_size(None).build();
+    let batcher = Batcher::build(fetcher.clone())
+        .eager_batch_size(None)
+        .finish();
 
     let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
 
@@ -253,10 +255,10 @@ async fn test_load_no_eager_batch_size() -> anyhow::Result<()> {
 async fn test_batch_delay() -> anyhow::Result<()> {
     let db = db::Database::fake();
     let fetcher = stubs::ObserveFetcher::new(db::FetchUsers { db: db.clone() });
-    let batcher = Batcher::new(fetcher.clone())
+    let batcher = Batcher::build(fetcher.clone())
         .delay_duration(tokio::time::Duration::from_millis(10))
         .eager_batch_size(None)
-        .build();
+        .finish();
 
     let user_ids: Vec<_> = db.users.iter().map(|user| user.id).collect();
 
@@ -301,7 +303,7 @@ async fn test_insert_extra_keys() -> Result<(), anyhow::Error> {
     }
 
     let fetcher = stubs::ObserveFetcher::new(OneFetcher);
-    let batcher = Batcher::new(fetcher.clone()).build();
+    let batcher = Batcher::build(fetcher.clone()).finish();
 
     let batch = batcher.load_many(&[2, 3, 4]).await?;
     assert_eq!(batch, vec![2, 3, 4]);
@@ -357,7 +359,7 @@ async fn test_keys_not_returned() -> Result<(), anyhow::Error> {
     }
 
     let fetcher = stubs::ObserveFetcher::new(EvenFetcher);
-    let batcher = Batcher::new(fetcher.clone()).build();
+    let batcher = Batcher::build(fetcher.clone()).finish();
 
     let batch = batcher.load_many(&[2, 4, 6]).await?;
     assert_eq!(batch, vec![2, 4, 6]);
@@ -426,7 +428,7 @@ async fn test_fetch_error_before_inserting() -> Result<(), anyhow::Error> {
     }
 
     let fetcher = stubs::ObserveFetcher::new(EvenFetcher);
-    let batcher = Batcher::new(fetcher.clone()).build();
+    let batcher = Batcher::build(fetcher.clone()).finish();
 
     let batch = batcher.load_many(&[2, 4, 6]).await?;
     assert_eq!(batch, vec![2, 4, 6]);
@@ -496,7 +498,7 @@ async fn test_fetch_error_after_inserting() -> Result<(), anyhow::Error> {
     }
 
     let fetcher = stubs::ObserveFetcher::new(EvenFetcher);
-    let batcher = Batcher::new(fetcher.clone()).build();
+    let batcher = Batcher::build(fetcher.clone()).finish();
 
     let batch = batcher.load_many(&[2, 4, 6]).await?;
     assert_eq!(batch, vec![2, 4, 6]);
