@@ -151,7 +151,7 @@ where
     async fn load_keys(&self, keys: &[F::Key]) -> Result<Vec<F::Value>, LoadError> {
         let mut cache_lookup = CacheLookup::new(keys.to_vec());
 
-        match cache_lookup.lookup(&self.cache_store).await {
+        match cache_lookup.lookup(&self.cache_store) {
             CacheLookupState::Done(result) => {
                 tracing::debug!(batcher = %self.label, "all keys have already been looked up");
                 return result;
@@ -194,7 +194,7 @@ where
             }
         }
 
-        match cache_lookup.lookup(&self.cache_store).await {
+        match cache_lookup.lookup(&self.cache_store) {
             CacheLookupState::Done(result) => {
                 tracing::debug!("all keys have now been looked up");
                 result

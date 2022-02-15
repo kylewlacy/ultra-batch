@@ -70,7 +70,7 @@ where
         CacheLookup { keys, entries }
     }
 
-    pub(crate) async fn reload_keys_from_cache_store(&mut self, cache_store: &CacheStore<K, V>) {
+    pub(crate) fn reload_keys_from_cache_store(&mut self, cache_store: &CacheStore<K, V>) {
         let keys: Vec<K> = self.entries.keys().into_iter().cloned().collect();
         for key in keys {
             self.entries
@@ -110,8 +110,8 @@ where
             .collect()
     }
 
-    pub(crate) async fn lookup(&mut self, cache_store: &CacheStore<K, V>) -> CacheLookupState<V> {
-        self.reload_keys_from_cache_store(cache_store).await;
+    pub(crate) fn lookup(&mut self, cache_store: &CacheStore<K, V>) -> CacheLookupState<V> {
+        self.reload_keys_from_cache_store(cache_store);
         let pending_keys = self.pending_keys();
 
         if pending_keys.is_empty() {
