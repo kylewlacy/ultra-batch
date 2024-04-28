@@ -1,6 +1,6 @@
 [package]
 name = "ultra-batch"
-version = "0.2.0"
+version = "0.3.0"
 description = "Tokio-based library to batch and cache database queries or other data lookups"
 authors = ["Kyle Lacy <rust@kyle.space>"]
 edition = "2021"

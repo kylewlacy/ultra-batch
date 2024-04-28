@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 ## [Unreleased]
+
+## [v0.3.0] - 2024-04-28
 ### Breaking
 - **Bump Minimum Supported Rust Version from 1.56 to 1.75**.
 - **Get rid of `async-trait`**. Rust 1.75 included support for [`async fn` in traits](https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html), and `ultra-batch` now uses this instead of the `async-trait` crate. This means all `impl`s of `Fetcher` should no longer use the `#[async_trait]` macro.
@@ -39,7 +41,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 - Initial release!
 
-[Unreleased]: https://github.com/kylewlacy/ultra-batch/compare/v0.2.0...main
+[Unreleased]: https://github.com/kylewlacy/ultra-batch/compare/v0.3.0...main
+[v0.3.0]: https://github.com/kylewlacy/ultra-batch/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/kylewlacy/ultra-batch/compare/v0.1.1...v0.2.0
 [v0.1.1]: https://github.com/kylewlacy/ultra-batch/compare/v0.1.0...v0.1.1
 [v0.1.0]: https://github.com/kylewlacy/ultra-batch/releases/tag/v0.1.0
