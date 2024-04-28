@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 
 ## [Unreleased]
+### Breaking
+- **Bump Minimum Supported Rust Version from 1.56 to 1.75**.
+- **Get rid of `async-trait`**. Rust 1.75 included support for [`async fn` in traits](https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits.html), and `ultra-batch` now uses this instead of the `async-trait` crate. This means all `impl`s of `Fetcher` should no longer use the `#[async_trait]` macro.
+- **Rename `Batcher` to `BatchFetcher`**.
+- **Update `BatchFetcherBuilder::label()` to take an `Into<Cow<'static, str>>` instead of `Into<String>`**. This makes it cheaper to clone `BatchFetcher`, since cloning a static string is now much cheaper.
+
+### Added
+- **Added `BatchExecutor` type and `Executor` trait**. These types are similar to `BatchFetcher` and `Fetcher`, but are more suitable for database mutations (such as bulk inserts/deletes), or for cases where you want more fine-grained control over how fetching works.
+
+### Changed
+- **Remove some unnecessary associated type bounds on `Fetcher::Error`**.
 
 ## [v0.2.0] - 2022-02-15
 ### Breaking
