@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 use ultra_batch::{Cache, Fetcher};
 use uuid::Uuid;
 
@@ -9,7 +12,7 @@ pub struct Database {
 }
 
 impl Database {
-    pub fn fake() -> Arc<Self> {
+    pub fn fake() -> Self {
         let users: HashMap<_, _> = (0..1000)
             .map(|_| User {
                 id: Uuid::new_v4(),
@@ -49,7 +52,7 @@ impl Database {
             posts,
             comments,
         };
-        Arc::new(db)
+        db
     }
 }
 
@@ -75,7 +78,7 @@ pub struct Comment {
 }
 
 pub struct FetchUsers {
-    pub db: Arc<Database>,
+    pub db: Arc<RwLock<Database>>,
 }
 
 impl Fetcher for FetchUsers {
@@ -88,8 +91,12 @@ impl Fetcher for FetchUsers {
         keys: &[Uuid],
         values: &mut Cache<'_, Uuid, User>,
     ) -> Result<(), Self::Error> {
+        let db = self
+            .db
+            .read()
+            .map_err(|_| anyhow::anyhow!("failed to lock database"))?;
         for key in keys {
-            if let Some(user) = self.db.users.get(key) {
+            if let Some(user) = db.users.get(key) {
                 values.insert(*key, user.clone())
             }
         }
