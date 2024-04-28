@@ -1,11 +1,13 @@
-//! Batch and cache database queries or other potentially expensive data
-//! lookups. The main motivation for this library is to solve the
-//! "N + 1" query problem seen in GraphQL and elsewhere. This library takes
-//! heavy influence from the GraphQL Foundation's [DataLoader](https://github.com/graphql/dataloader).
+//! Batch and cache database queries, mutations, or other potentially expensive
+//! operations. The main motivation for this library is to solve the "N + 1"
+//! query problem seen in GraphQL and elsewhere. This library takes heavy
+//! influence from the GraphQL Foundation's [DataLoader](https://github.com/graphql/dataloader).
 //!
-//! The most common entrypoints to this library are the [`BatchFetcher`] type
-//! (used to queue and load data in batches) and the [`Fetcher`] trait (used by
-//! [`BatchFetcher`]s to actually retrieve the data).
+//! For batched data queries, see the [`BatchFetcher`] type (used to queue and
+//! load data in batches) and the [`Fetcher`] trait (used by [`BatchFetcher`]s
+//! to actually retrieve the data). For other operations including mutations
+//! or more advanced query operations, see the [`BatchExecutor`] type and
+//! the [`Executor`] trait.
 
 pub(crate) mod batch_executor;
 pub(crate) mod batch_fetcher;

@@ -1,6 +1,38 @@
 use crate::Executor;
 use std::{borrow::Cow, sync::Arc};
 
+/// Batches calls to an [`Executor`], such as for bulk inserting, updating,
+/// or deleting records in a datastore. `BatchExecutor`s are asynchronous
+/// and designed to be passed and shared between threads or tasks. Cloning
+/// a `BatchExecutor` is shallow and will use the same underlying [`Executor`].
+///
+/// `BatchExecutor` is designed primarily for bulk database operations-- for
+/// example, inserting lots of records, where a single query to insert
+/// 50 new records is much faster than 50 separate queries. However, it can
+/// be used for fetching data or any other bulk operation as well.
+///
+/// Unlike [`BatchFetcher`](crate::BatchFetcher), `BatchExecutor` has no
+/// concepts of keys, values, deduplication, or caching; each executed value
+/// is passed directly to the underlying [`Executor`]. As such, it could also
+/// be suitable for writing a custom caching layer in situations where
+/// [`BatchFetcher`](crate::BatchFetcher) is not suitable.
+///
+/// `BatchExecutor`s introduce a small amount of latency for executions. Each
+/// time a new value or set of values is sent for execution, it will first
+/// wait for more values to buid a batch. The execution will only trigger after
+/// a timeout is reached or once enough values have been queued in the batch.
+/// See [`BatchExecutorBuilder`] for options to tweak latency and batch sizes.
+///
+/// ## Execution semantics
+///
+/// If the underlying [`Executor`] returns an error during the batch execution,
+/// then all pending [`execute`](BatchExecutor::execute) and [`execute_many`](BatchExecutor::execute_many)
+/// requests will fail. The same values can be resubmitted to retry.
+///
+/// If the underlying [`Executor`] succeeds but does not return a `Vec` that
+/// contains results for all values, then calls to [`execute`](BatchExecutor::execute)
+/// may return `None`. Calls to [`execute_many`](BatchExecutor::execute_many)
+/// may return a `Vec` containing less output values than input values.
 pub struct BatchExecutor<E>
 where
     E: Executor,
@@ -14,6 +46,63 @@ impl<E> BatchExecutor<E>
 where
     E: Executor + Send + Sync + 'static,
 {
+    /// Create a new `BatchExecutor` athat uses the given [`Executor`] to
+    /// execute values. Returns a [`BatchExecutorBuilder`], which can be
+    /// used to customize the `BatchExecutor`. Call [`.finish()`](BatchExecutorBuilder::finish)
+    /// to create the `BatchExecutor`.
+    ///
+    /// # Examples
+    ///
+    /// Creating a `BatchExecutor` with default options:
+    ///
+    /// ```
+    /// # use ultra_batch::{BatchExecutor, Executor};
+    /// # struct UserInserter;
+    /// # impl UserInserter {
+    /// #     fn new(db_conn: ()) -> Self { UserInserter }
+    /// #  }
+    /// # impl Executor for UserInserter {
+    /// #     type Value = ();
+    /// #     type Result = ();
+    /// #     type Error = anyhow::Error;
+    /// #     async fn execute(&self, values: Vec<()>) -> anyhow::Result<Vec<()>> {
+    /// #         unimplemented!();
+    /// #     }
+    /// # }
+    /// # #[tokio::main] async fn main() -> anyhow::Result<()> {
+    /// # let db_conn = ();
+    /// let user_inserter = UserInserter::new(db_conn);
+    /// let batch_inserter = BatchExecutor::build(user_inserter).finish();
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Creating a `BatchExecutor` with custom options:
+    ///
+    /// ```
+    /// # use ultra_batch::{BatchExecutor, Executor};
+    /// # struct UserInserter;
+    /// # impl UserInserter {
+    /// #     fn new(db_conn: ()) -> Self { UserInserter }
+    /// #  }
+    /// # impl Executor for UserInserter {
+    /// #     type Value = ();
+    /// #     type Result = ();
+    /// #     type Error = anyhow::Error;
+    /// #     async fn execute(&self, values: Vec<()>) -> anyhow::Result<Vec<()>> {
+    /// #         unimplemented!();
+    /// #     }
+    /// # }
+    /// # #[tokio::main] async fn main() -> anyhow::Result<()> {
+    /// # let db_conn = ();
+    /// let user_inserter = UserInserter::new(db_conn);
+    /// let batch_inserter = BatchExecutor::build(user_inserter)
+    ///     .eager_batch_size(Some(50))
+    ///     .delay_duration(tokio::time::Duration::from_millis(5))
+    ///     .finish();
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn build(executor: E) -> BatchExecutorBuilder<E> {
         BatchExecutorBuilder {
             executor,
@@ -23,13 +112,23 @@ where
         }
     }
 
-    #[tracing::instrument(skip_all, fields(batch_fetcher = %self.label))]
+    /// Submit a value to be executed by the [`Executor`]. Returns the
+    /// result value returned by the [`Executor`] for this given item. See
+    /// the type-level docs for [`BatchExecutor`](#execution-semantics) for
+    /// detailed execution semantics.
+    #[tracing::instrument(skip_all, fields(batch_executor = %self.label))]
     pub async fn execute(&self, key: E::Value) -> Result<Option<E::Result>, ExecuteError> {
         let mut values = self.execute_values(vec![key]).await?;
         Ok(values.pop())
     }
 
-    #[tracing::instrument(skip_all, fields(batch_fetcher = %self.label, num_values = values.len()))]
+    /// Submit multiple values to be executed by the [`Executor`]. Returns a
+    /// `Vec` containg values for each result returned by the [`Executor`]
+    /// for each given input value (but note that the returned `Vec` may
+    /// not have values for all inputs if the [`Executor`] did not return
+    /// enough results). See the type-level docs for [`BatchExecutor`](#execution-semantics)
+    /// for detailed execution semantics.
+    #[tracing::instrument(skip_all, fields(batch_executor = %self.label, num_values = values.len()))]
     pub async fn execute_many(
         &self,
         values: Vec<E::Value>,
@@ -54,7 +153,7 @@ where
 
         match result_rx.await {
             Ok(Ok(results)) => {
-                tracing::debug!(batch_fetcher = %self.label, "fetch response returned successfully");
+                tracing::debug!(batch_executor = %self.label, "fetch response returned successfully");
                 Ok(results)
             }
             Ok(Err(execute_error)) => {
@@ -63,7 +162,7 @@ where
             }
             Err(recv_error) => {
                 panic!(
-                    "Batch result channel for batch fetcher {} hung up with error: {recv_error}",
+                    "Batch result channel for batch executor {} hung up with error: {recv_error}",
                     self.label,
                 );
             }
@@ -84,8 +183,8 @@ where
     }
 }
 
-/// Used to configure a new [`BatchFetcher`]. A `BatchFetcherBuilder` is
-/// returned from [`BatchFetcher::build`].
+/// Used to configure a new [`BatchExecutor`]. A `BatchExecutorBuilder` is
+/// returned from [`BatchExecutor::build`].
 pub struct BatchExecutorBuilder<E>
 where
     E: Executor + Send + Sync + 'static,
@@ -100,38 +199,38 @@ impl<E> BatchExecutorBuilder<E>
 where
     E: Executor + Send + Sync + 'static,
 {
-    /// The maximum amount of time the [`BatchFetcher`] will wait to queue up
-    /// more keys before calling the [`Fetcher`].
+    /// The maximum amount of time the [`BatchExecutor`] will wait to queue up
+    /// more keys before calling the [`Executor`].
     pub fn delay_duration(mut self, delay: tokio::time::Duration) -> Self {
         self.delay_duration = delay;
         self
     }
 
     /// The maximum number of keys to wait for before eagerly calling the
-    /// [`Fetcher`]. A value of `Some(n)` will load the batch once `n` or more
+    /// [`Executor`]. A value of `Some(n)` will load the batch once `n` or more
     /// keys have been queued (or once the timeout set by
-    /// [`delay_duration`](BatchFetcherBuilder::delay_duration) is reached,
+    /// [`delay_duration`](BatchExecutorBuilder::delay_duration) is reached,
     /// whichever comes first). A value of `None` will never eagerly dispatch
-    /// the queue, and the [`BatchFetcher`] will always wait for the timeout set
-    /// by [`delay_duration`](BatchFetcherBuilder::delay_duration).
+    /// the queue, and the [`BatchExecutor`] will always wait for the timeout
+    /// set by [`delay_duration`](BatchExecutorBuilder::delay_duration).
     ///
     /// Note that `eager_batch_size` **does not** set an upper limit on the
-    /// batch! For example, if [`BatchFetcher::load_many`] is called with more
-    /// than `eager_batch_size` items, then the batch will be sent immediately
-    /// with _all_ of the provided keys.
+    /// batch! For example, if [`BatchExecutor::execute_many`] is called with
+    /// more than `eager_batch_size` items, then the batch will be sent
+    /// immediately with _all_ of the provided values.
     pub fn eager_batch_size(mut self, eager_batch_size: Option<usize>) -> Self {
         self.eager_batch_size = eager_batch_size;
         self
     }
 
-    /// Set a label for the [`BatchFetcher`]. This is only used to improve
+    /// Set a label for the [`BatchExecutor`]. This is only used to improve
     /// diagnostic messages, such as log messages.
     pub fn label(mut self, label: impl Into<Cow<'static, str>>) -> Self {
         self.label = label.into();
         self
     }
 
-    /// Create and return a [`BatchFetcher`] with the given options.
+    /// Create and return a [`BatchExecutor`] with the given options.
     pub fn finish(self) -> BatchExecutor<E> {
         let (execute_request_tx, mut execute_request_rx) =
             tokio::sync::mpsc::channel::<ExecuteRequest<E::Value, E::Result>>(1);
@@ -147,7 +246,7 @@ where
                     tracing::trace!(batch_executor = %self.label, "waiting for values to execute...");
                     match execute_request_rx.recv().await {
                         Some(execute_request) => {
-                            tracing::trace!(batch_fetcher = %self.label, num_execute_request_values = execute_request.values.len(), "received initial execute request");
+                            tracing::trace!(batch_executor = %self.label, num_execute_request_values = execute_request.values.len(), "received initial execute request");
 
                             let result_start_index = pending_values.len();
                             pending_values.extend(execute_request.values);
@@ -169,7 +268,7 @@ where
                         if should_run_batch_now {
                             // We have enough values already, so don't wait for more
                             tracing::trace!(
-                                batch_fetcher = %self.label,
+                                batch_executor = %self.label,
                                 num_pending_values = pending_values.len(),
                                 eager_batch_size = ?self.eager_batch_size,
                                 "batch filled up, ready to execute now",
@@ -204,7 +303,7 @@ where
                             _ = &mut delay => {
                                 // Reached delay, so we're done waiting for keys
                                 tracing::trace!(
-                                    batch_fetcher = %self.label,
+                                    batch_executor = %self.label,
                                     num_pending_values = pending_values.len(),
                                     "delay reached while waiting for more values to fetch"
                                 );
@@ -252,20 +351,16 @@ struct ExecuteRequest<V, R> {
     result_tx: tokio::sync::oneshot::Sender<Result<Vec<R>, String>>,
 }
 
-/// Error indicating that loading one or more values from a [`BatchFetcher`]
-/// failed.
+/// Error indicating that execution of one or more values from a
+/// [`BatchExecutor`] failed.
 #[derive(Debug, thiserror::Error)]
 pub enum ExecuteError {
-    /// The [`Fetcher`] returned an error while loading the batch. The message
-    /// contains the error message specified by [`Fetcher::Error`].
-    #[error("error while fetching from batch: {}", _0)]
+    /// The [`Executor`] returned an error while loading the batch. The message
+    /// contains the error message specified by [`Executor::Error`].
+    #[error("error while executing batch: {}", _0)]
     ExecutorError(String),
 
-    /// The request could not be sent to the [`BatchFetcher`].
-    #[error("error sending fetch request")]
+    /// The request could not be sent to the [`BatchExecutor`].
+    #[error("error sending execution request")]
     SendError,
-
-    /// The [`Fetcher`] did not return a value for one or more keys in the batch.
-    #[error("value not found")]
-    NotFound,
 }

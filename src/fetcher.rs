@@ -5,12 +5,9 @@ use std::hash::Hash;
 
 /// A trait for fetching values from some datastore in bulk. A `Fetcher`
 /// will be given an array of keys and should insert fetched values into
-/// a given cache. Implementing `Fetcher` will allow queries to be batch
-/// using a [`Batcher`](crate::Batcher). See the [`Batcher`](crate::Batcher)
+/// a given cache. Implementing `Fetcher` will allow queries to be batched
+/// using a [`BatchFetcher`](crate::BatchFetcher). See the [`BatchFetcher`](crate::BatchFetcher)
 /// docs for details about batching, caching, and error semantics.
-///
-/// Implementors should use [`async-trait`](https://crates.io/crates/async-trait)
-/// to implement this trait.
 ///
 /// # Examples
 ///
@@ -61,9 +58,9 @@ pub trait Fetcher {
     /// into `values` will be marked as "not found" (meaning any future attempts
     /// to retrieve them will fail). If `Err(_)` is returned, then the caller(s)
     /// waiting on the batch will receive a [`LoadError::FetchError`](crate::LoadError::FetchError)
-    /// with the message from returned error (note that any values inserted into
-    /// `values` before the `Err(_)` is returned will still be cached). See the
-    /// [`Batcher`](crate::Batcher) docs for more details.
+    /// with the message from the returned error (note that any values inserted
+    /// into `values` before the `Err(_)` is returned will still be cached).
+    /// See the [`BatchFetcher`](crate::BatchFetcher) docs for more details.
     fn fetch(
         &self,
         keys: &[Self::Key],

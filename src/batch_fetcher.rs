@@ -4,18 +4,17 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-/// Used to batch and cache loads from some datastore. A `BatchFetcher` can be
+/// Batches and caches loads from some datastore. A `BatchFetcher` can be
 /// used with any type that implements [`Fetcher`]. `BatchFetcher`s are
 /// asynchronous and designed to be passed and shared between threads or tasks.
-/// Cloning a `BatchFetcher` is shallow and can be used to use the same
-/// `Fetcher` across multiple threads or tasks.
+/// Cloning a `BatchFetcher` is shallow and will use the same [`Fetcher`].
 ///
-/// A `BatchFetcher` is designed primarily around batching database lookups--
+/// `BatchFetcher` is designed primarily around batching database lookups--
 /// for example, fetching a user from a user ID, where a signle query to
 /// retrieve 50 users by ID is significantly faster than 50 separate queries to
 /// look up the same set of users.
 ///
-/// A `BatchFetcger` is designed to be ephemeral. In the context of a web
+/// A `BatchFetcher` is designed to be ephemeral. In the context of a web
 /// service, this means callers should most likely create a new `BatchFetcher`
 /// for each request, and **not** a `BatchFetcher` shared across multiple
 /// requests. `BatchFetcher`s have no concept of cache invalidation, so old
@@ -28,6 +27,10 @@ use std::sync::Arc;
 /// trigger after a timeout is reached or once enough keys have been queued in
 /// the batch. See [`BatchFetcherBuilder`] for options to tweak latency and
 /// batch sizes.
+///
+/// See also [`BatchExecutor`](crate::BatchExecutor) for a more general type
+/// designed primarly for mutations, but can also be used for fetching with
+/// more control over how batches are fetched.
 ///
 /// ## Load semantics
 ///
