@@ -1,5 +1,6 @@
 use crate::cache::{CacheLookup, CacheLookupState, CacheStore};
 use crate::Fetcher;
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -46,7 +47,7 @@ pub struct BatchFetcher<F>
 where
     F: Fetcher,
 {
-    label: String,
+    label: Cow<'static, str>,
     cache_store: CacheStore<F::Key, F::Value>,
     _fetch_task: Arc<tokio::task::JoinHandle<()>>,
     fetch_request_tx: tokio::sync::mpsc::Sender<FetchRequest<F::Key>>,
@@ -117,7 +118,7 @@ where
             fetcher,
             delay_duration: tokio::time::Duration::from_millis(10),
             eager_batch_size: Some(100),
-            label: "unlabeled-batch-fetcher".to_string(),
+            label: "unlabeled-batch-fetcher".into(),
         }
     }
 
@@ -228,7 +229,7 @@ where
     fetcher: F,
     delay_duration: tokio::time::Duration,
     eager_batch_size: Option<usize>,
-    label: String,
+    label: Cow<'static, str>,
 }
 
 impl<F> BatchFetcherBuilder<F>
@@ -261,7 +262,7 @@ where
 
     /// Set a label for the [`BatchFetcher`]. This is only used to improve
     /// diagnostic messages, such as log messages.
-    pub fn label(mut self, label: impl Into<String>) -> Self {
+    pub fn label(mut self, label: impl Into<Cow<'static, str>>) -> Self {
         self.label = label.into();
         self
     }
