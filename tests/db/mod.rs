@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use std::sync::Arc;
 use ultra_batch::{Cache, Fetcher};
 use uuid::Uuid;
@@ -76,7 +75,6 @@ pub struct FetchUsers {
     pub db: Arc<Database>,
 }
 
-#[async_trait]
 impl Fetcher for FetchUsers {
     type Key = Uuid;
     type Value = User;

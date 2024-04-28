@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{atomic, Arc, RwLock};
 use ultra_batch::{Cache, Fetcher};
@@ -69,7 +68,6 @@ where
     }
 }
 
-#[async_trait]
 impl<F> Fetcher for ObserveFetcher<F>
 where
     F: Fetcher + Send + Sync,

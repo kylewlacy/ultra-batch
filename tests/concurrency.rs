@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use ultra_batch::{Batcher, Cache, Fetcher};
 
 fn fib(n: usize) -> usize {
@@ -19,7 +18,6 @@ struct BigValue {
 // test lots of tasks running in parallel.
 struct SlowFetcher;
 
-#[async_trait]
 impl Fetcher for SlowFetcher {
     type Key = usize;
     type Value = BigValue;

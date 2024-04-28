@@ -1,6 +1,6 @@
 use crate::Cache;
-use async_trait::async_trait;
 use std::fmt::Display;
+use std::future::Future;
 use std::hash::Hash;
 
 /// A trait for fetching values from some datastore in bulk. A `Fetcher`
@@ -15,7 +15,6 @@ use std::hash::Hash;
 /// # Examples
 ///
 /// ```
-/// # use async_trait::async_trait;
 /// # use ultra_batch::{Fetcher, Cache};
 /// # #[derive(Clone, Copy, Hash, PartialEq, Eq)] struct UserId(usize);
 /// # #[derive(Clone)] struct User { id: UserId }
@@ -30,7 +29,6 @@ use std::hash::Hash;
 ///     db_conn: DbConnection,
 /// }
 ///
-/// #[async_trait]
 /// impl Fetcher for UserFetcher {
 ///     type Key = UserId;
 ///     type Value = User;
@@ -45,7 +43,6 @@ use std::hash::Hash;
 ///     }
 /// }
 /// ```
-#[async_trait]
 pub trait Fetcher {
     /// The type used to look up a single value in a batch.
     type Key: Clone + Hash + Eq + Send + Sync;
@@ -67,9 +64,9 @@ pub trait Fetcher {
     /// with the message from returned error (note that any values inserted into
     /// `values` before the `Err(_)` is returned will still be cached). See the
     /// [`Batcher`](crate::Batcher) docs for more details.
-    async fn fetch(
+    fn fetch(
         &self,
         keys: &[Self::Key],
         values: &mut Cache<'_, Self::Key, Self::Value>,
-    ) -> Result<(), Self::Error>;
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }

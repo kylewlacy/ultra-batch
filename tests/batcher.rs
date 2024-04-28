@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use ultra_batch::{Batcher, Cache, Fetcher, LoadError};
 
 mod db;
@@ -282,7 +281,6 @@ async fn test_insert_extra_keys() -> Result<(), anyhow::Error> {
     // Fetcher that returns the input value, and also always inserts the value 1
     struct OneFetcher;
 
-    #[async_trait]
     impl Fetcher for OneFetcher {
         type Key = u64;
         type Value = u64;
@@ -337,7 +335,6 @@ async fn test_keys_not_returned() -> Result<(), anyhow::Error> {
     // Fetcher that only returns values for even keys (odd keys are ignored)
     struct EvenFetcher;
 
-    #[async_trait]
     impl Fetcher for EvenFetcher {
         type Key = u64;
         type Value = u64;
@@ -399,7 +396,6 @@ async fn test_fetch_error_before_inserting() -> Result<(), anyhow::Error> {
     // Fetcher that first validates no odd keys are present, then stores even keys
     struct EvenFetcher;
 
-    #[async_trait]
     impl Fetcher for EvenFetcher {
         type Key = u64;
         type Value = u64;
@@ -469,7 +465,6 @@ async fn test_fetch_error_after_inserting() -> Result<(), anyhow::Error> {
     // Fetcher that stores even keys, then errors out if any odd keys are present
     struct EvenFetcher;
 
-    #[async_trait]
     impl Fetcher for EvenFetcher {
         type Key = u64;
         type Value = u64;

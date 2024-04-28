@@ -16,7 +16,6 @@ log = ["tracing/log"]
 
 [dependencies]
 tokio = { version = "^1.16", features = ["rt", "sync", "macros", "time"] }
-async-trait = "0.1.52"
 thiserror = "^1.0"
 chashmap = "^2.2"
 tracing = "0.1.30"

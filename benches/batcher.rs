@@ -1,9 +1,7 @@
-use async_trait::async_trait;
 use ultra_batch::{Batcher, Cache, Fetcher};
 
 struct FetchIdent;
 
-#[async_trait]
 impl Fetcher for FetchIdent {
     type Key = u64;
     type Value = u64;

@@ -65,13 +65,11 @@ where
     /// Creating a `Batcher` with default options:
     ///
     /// ```
-    /// # use async_trait::async_trait;
     /// # use ultra_batch::{Batcher, Fetcher, Cache};
     /// # struct UserFetcher;
     /// # impl UserFetcher {
     /// #     fn new(db_conn: ()) -> Self { UserFetcher }
     /// #  }
-    /// # #[async_trait]
     /// # impl Fetcher for UserFetcher {
     /// #     type Key = ();
     /// #     type Value = ();
@@ -91,13 +89,11 @@ where
     /// Creating a `Batcher` with custom options:
     ///
     /// ```
-    /// # use async_trait::async_trait;
     /// # use ultra_batch::{Batcher, Fetcher, Cache};
     /// # struct UserFetcher;
     /// # impl UserFetcher {
     /// #     fn new(db_conn: ()) -> Self { UserFetcher }
     /// #  }
-    /// # #[async_trait]
     /// # impl Fetcher for UserFetcher {
     /// #     type Key = ();
     /// #     type Value = ();
