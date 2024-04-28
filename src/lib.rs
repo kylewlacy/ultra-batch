@@ -7,10 +7,14 @@
 //! (used to queue and load data in batches) and the [`Fetcher`] trait (used by
 //! [`BatchFetcher`]s to actually retrieve the data).
 
+pub(crate) mod batch_executor;
 pub(crate) mod batch_fetcher;
 pub(crate) mod cache;
+pub(crate) mod executor;
 pub(crate) mod fetcher;
 
+pub use batch_executor::{BatchExecutor, BatchExecutorBuilder, ExecuteError};
 pub use batch_fetcher::{BatchFetcher, BatchFetcherBuilder, LoadError};
 pub use cache::Cache;
+pub use executor::Executor;
 pub use fetcher::Fetcher;
