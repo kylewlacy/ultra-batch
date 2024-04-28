@@ -1,23 +1,24 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use ultra_batch::{Cache, Fetcher};
 use uuid::Uuid;
 
 pub struct Database {
-    pub users: Vec<User>,
-    pub posts: Vec<Post>,
-    pub comments: Vec<Comment>,
+    pub users: HashMap<Uuid, User>,
+    pub posts: HashMap<Uuid, Post>,
+    pub comments: HashMap<Uuid, Comment>,
 }
 
 impl Database {
     pub fn fake() -> Arc<Self> {
-        let users: Vec<_> = (0..1000)
+        let users: HashMap<_, _> = (0..1000)
             .map(|_| User {
                 id: Uuid::new_v4(),
                 name: fakeit::name::full(),
             })
+            .map(|user| (user.id, user))
             .collect();
-        let posts: Vec<_> = users
-            .iter()
+        let posts: HashMap<_, _> = users
+            .values()
             .enumerate()
             .flat_map(|(n, user)| {
                 (0..(n % 3)).map(move |_| Post {
@@ -26,12 +27,13 @@ impl Database {
                     body: fakeit::words::sentence(3),
                 })
             })
+            .map(|post| (post.id, post))
             .collect();
-        let comments: Vec<_> = posts
-            .iter()
+        let comments: HashMap<_, _> = posts
+            .values()
             .enumerate()
             .flat_map(|(n, post)| {
-                let commenter = &users[n % users.len()];
+                let commenter = users.values().nth(n % users.len()).unwrap();
                 (0..3).map(move |_| Comment {
                     id: Uuid::new_v4(),
                     post_id: post.id,
@@ -39,6 +41,7 @@ impl Database {
                     comment: fakeit::words::sentence(2),
                 })
             })
+            .map(|comment| (comment.id, comment))
             .collect();
 
         let db = Database {
@@ -86,7 +89,7 @@ impl Fetcher for FetchUsers {
         values: &mut Cache<'_, Uuid, User>,
     ) -> Result<(), Self::Error> {
         for key in keys {
-            if let Some(user) = self.db.users.iter().find(|user| user.id == *key) {
+            if let Some(user) = self.db.users.get(key) {
                 values.insert(*key, user.clone())
             }
         }
