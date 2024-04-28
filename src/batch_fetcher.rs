@@ -179,14 +179,13 @@ where
                 tracing::debug!(batch_fetcher = %self.label, "fetch response returned successfully");
             }
             Ok(Err(fetch_error)) => {
-                tracing::info!("error returned while fetching keys: {}", fetch_error);
+                tracing::info!("error returned while fetching keys: {fetch_error}");
                 return Err(LoadError::FetchError(fetch_error));
             }
             Err(recv_error) => {
                 panic!(
-                    "Batch result channel for batch fetcher {batch_fetcher} hung up with error: {error}",
-                    batch_fetcher = self.label,
-                    error = recv_error,
+                    "Batch result channel for batch fetcher {} hung up with error: {recv_error}",
+                    self.label,
                 );
             }
         }
@@ -198,8 +197,8 @@ where
             }
             CacheLookupState::Pending => {
                 panic!(
-                    "Batch result for batch fetcher {batch_fetcher} is still pending after result channel was sent",
-                    batch_fetcher = self.label,
+                    "Batch result for batch fetcher {} is still pending after result channel was sent",
+                    self.label,
                 );
             }
         }
