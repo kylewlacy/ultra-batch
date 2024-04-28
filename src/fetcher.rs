@@ -51,7 +51,7 @@ pub trait Fetcher {
     type Value: Clone + Send + Sync;
 
     /// The error indicating that fetching a batch failed.
-    type Error: Display + Send + Sync + 'static;
+    type Error: Display;
 
     /// Retrieve the values associated with the given keys, and insert them into
     /// `values` if found. If `Ok(_)` is returned, then any keys not inserted

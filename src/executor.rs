@@ -9,14 +9,14 @@ use std::future::Future;
 /// docs for details about batching and error semantics.
 pub trait Executor {
     /// The input value provided by the caller to do something.
-    type Value: Clone + Send + Sync;
+    type Value: Send;
 
     /// The output value returned by the executor back to the caller for each
     /// input value.
-    type Result: Clone + Send + Sync;
+    type Result: Send;
 
     /// The error indicating that executing a batch failed.
-    type Error: Display + Send + Sync + 'static;
+    type Error: Display;
 
     /// Execute the operation for each value in the batch, returning a result
     /// for each value. If `Ok(_)` is returned, a `Vec` should be returned,
