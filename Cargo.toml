@@ -30,3 +30,7 @@ divan = "0.1.14"
 [[bench]]
 name = "batch_fetcher"
 harness = false
+
+[[bench]]
+name = "batch_executor"
+harness = false
