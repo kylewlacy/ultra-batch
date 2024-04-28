@@ -3,14 +3,14 @@
 //! "N + 1" query problem seen in GraphQL and elsewhere. This library takes
 //! heavy influence from the GraphQL Foundation's [DataLoader](https://github.com/graphql/dataloader).
 //!
-//! The most common entrypoints to this library are the [`Batcher`] type (used
-//! to queue and load data in batches) and the [`Fetcher`] trait (used by
-//! [`Batcher`]s to actually retrieve the data).
+//! The most common entrypoints to this library are the [`BatchFetcher`] type
+//! (used to queue and load data in batches) and the [`Fetcher`] trait (used by
+//! [`BatchFetcher`]s to actually retrieve the data).
 
-pub(crate) mod batcher;
+pub(crate) mod batch_fetcher;
 pub(crate) mod cache;
 pub(crate) mod fetcher;
 
-pub use batcher::{Batcher, BatcherBuilder, LoadError};
+pub use batch_fetcher::{BatchFetcher, BatchFetcherBuilder, LoadError};
 pub use cache::Cache;
 pub use fetcher::Fetcher;

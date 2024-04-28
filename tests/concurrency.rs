@@ -1,4 +1,4 @@
-use ultra_batch::{Batcher, Cache, Fetcher};
+use ultra_batch::{BatchFetcher, Cache, Fetcher};
 
 fn fib(n: usize) -> usize {
     match n {
@@ -53,7 +53,7 @@ impl Fetcher for SlowFetcher {
 }
 
 async fn concurrency_task() -> anyhow::Result<()> {
-    let batcher = Batcher::build(SlowFetcher).finish();
+    let batcher = BatchFetcher::build(SlowFetcher).finish();
     let load_tasks = (0..2000)
         .map(|n| {
             let key = n / 3;

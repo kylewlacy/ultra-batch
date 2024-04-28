@@ -3,46 +3,46 @@ use crate::Fetcher;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-/// Used to batch and cache loads from some datastore. A `Batcher` can be used
-/// with any type that implements [`Fetcher`]. `Batcher`s are asynchronous, and
-/// designed to be passed and shared between threads or tasks. Cloning a
-/// `Batcher` is shallow and can be used to use the same `Fetcher` across
-/// multiple threads or tasks.
+/// Used to batch and cache loads from some datastore. A `BatchFetcher` can be
+/// used with any type that implements [`Fetcher`]. `BatchFetcher`s are
+/// asynchronous and designed to be passed and shared between threads or tasks.
+/// Cloning a `BatchFetcher` is shallow and can be used to use the same
+/// `Fetcher` across multiple threads or tasks.
 ///
-/// A `Batcher` is designed primarily around batching database lookups-- for
-/// example, fetching a user from a user ID, where a signle query to retrieve
-/// 50 users by ID is significantly faster than 50 separate queries to look up
-/// the same set of users.
+/// A `BatchFetcher` is designed primarily around batching database lookups--
+/// for example, fetching a user from a user ID, where a signle query to
+/// retrieve 50 users by ID is significantly faster than 50 separate queries to
+/// look up the same set of users.
 ///
-/// A `Batcher` is designed to be ephemeral. In the context of a web service,
-/// this means callers should most likely create a new `Batcher` for each
-/// request, and **not** a `Batcher` shared across multiple requests.
-/// `Batcher`s have no concept of cache invalidation, so old values are stored
-/// indefinitely (which means callers may get stale data or may exhaust memory
-/// endlessly).
+/// A `BatchFetcger` is designed to be ephemeral. In the context of a web
+/// service, this means callers should most likely create a new `BatchFetcher`
+/// for each request, and **not** a `BatchFetcher` shared across multiple
+/// requests. `BatchFetcher`s have no concept of cache invalidation, so old
+/// values are stored indefinitely (which means callers may get stale data or
+/// may exhaust memory endlessly).
 ///
-/// `Batcher`s introduce a small amount of latency for loads. Each time a
-/// `Batcher` receives a key to fetch that hasn't been cached (or a set of
+/// `BatchFetcher`s introduce a small amount of latency for loads. Each time a
+/// `BatchFetcher` receives a key to fetch that hasn't been cached (or a set of
 /// keys), it will first wait for more keys to build a batch. The load will only
 /// trigger after a timeout is reached or once enough keys have been queued in
-/// the batch. See [`BatcherBuilder`](struct.BatcherBuilder.html) for options
-/// to tweak latency and batch sizes.
+/// the batch. See [`BatchFetcherBuilder`] for options to tweak latency and
+/// batch sizes.
 ///
 /// ## Load semantics
 ///
 /// If the underlying [`Fetcher`] returns an error during the batch request,
-/// then all pending [`load`](Batcher::load) and [`load_many`](Batcher::load_many)
-/// requests will fail. Subsequent calls to [`load`](Batcher::load) or
-/// [`load_many`](Batcher::load_many) with the same keys **will retry**.
+/// then all pending [`load`](BatchFetcher::load) and [`load_many`](BatchFetcher::load_many)
+/// requests will fail. Subsequent calls to [`load`](BatchFetcher::load) or
+/// [`load_many`](BatchFetcher::load_many) with the same keys **will retry**.
 ///
 /// If the underlying [`Fetcher`] succeeds but does not return a value for a
-/// given key during a batch request, then the `Batcher` will mark that key as
-/// "not found" and an error value of [`NotFound`](LoadError::NotFound) will be
-/// returned to all pending [`load`](struct.Batcher.html#method.load) and
-/// [`load_many`](struct.Batcher.html#method.load_many) requests. The
-/// "not found" status will be preserved, so subsequent calls with the same key
-/// will fail and **will not retry**.
-pub struct Batcher<F>
+/// given key during a batch request, then the `BatchFetcher` will mark that key
+/// as "not found" and an error value of [`NotFound`](LoadError::NotFound) will
+/// be returned to all pending [`load`](BatchFetcher::load) and
+/// [`load_many`](BatchFetcher::load_many) requests. The "not found" status will
+/// be preserved, so subsequent calls with the same key will fail and **will
+/// not retry**.
+pub struct BatchFetcher<F>
 where
     F: Fetcher,
 {
@@ -52,20 +52,21 @@ where
     fetch_request_tx: tokio::sync::mpsc::Sender<FetchRequest<F::Key>>,
 }
 
-impl<F> Batcher<F>
+impl<F> BatchFetcher<F>
 where
     F: Fetcher + Send + Sync + 'static,
 {
-    /// Create a new `Batcher` that uses the given [`Fetcher`] to retrieve data.
-    /// Returns a [`BatcherBuilder`], which can be used to customize the
-    /// `Batcher`. Call [`.finish()`](BatcherBuilder::finish) to create the `Batcher`.
+    /// Create a new `BatchFetcher` that uses the given [`Fetcher`] to retrieve
+    /// data. Returns a [`BatchFetcherBuilder`], which can be used to customize
+    /// the `BatchFetcher`. Call [`.finish()`](BatchFetcherBuilder::finish) to
+    /// create the `BatchFetcher`.
     ///
     /// # Examples
     ///
-    /// Creating a `Batcher` with default options:
+    /// Creating a `BatchFetcher` with default options:
     ///
     /// ```
-    /// # use ultra_batch::{Batcher, Fetcher, Cache};
+    /// # use ultra_batch::{BatchFetcher, Fetcher, Cache};
     /// # struct UserFetcher;
     /// # impl UserFetcher {
     /// #     fn new(db_conn: ()) -> Self { UserFetcher }
@@ -81,15 +82,15 @@ where
     /// # #[tokio::main] async fn main() -> anyhow::Result<()> {
     /// # let db_conn = ();
     /// let user_fetcher = UserFetcher::new(db_conn);
-    /// let batcher = Batcher::build(user_fetcher).finish();
+    /// let batch_fetcher = BatchFetcher::build(user_fetcher).finish();
     /// # Ok(())
     /// # }
     /// ```
     ///
-    /// Creating a `Batcher` with custom options:
+    /// Creating a `BatchFetcher` with custom options:
     ///
     /// ```
-    /// # use ultra_batch::{Batcher, Fetcher, Cache};
+    /// # use ultra_batch::{BatchFetcher, Fetcher, Cache};
     /// # struct UserFetcher;
     /// # impl UserFetcher {
     /// #     fn new(db_conn: ()) -> Self { UserFetcher }
@@ -105,18 +106,18 @@ where
     /// # #[tokio::main] async fn main() -> anyhow::Result<()> {
     /// # let db_conn = ();
     /// let user_fetcher = UserFetcher::new(db_conn);
-    /// let batcher = Batcher::build(user_fetcher)
+    /// let batch_fetcher = BatchFetcher::build(user_fetcher)
     ///     .eager_batch_size(Some(50))
     ///     .delay_duration(tokio::time::Duration::from_millis(5))
     ///     .finish();
     /// # Ok(()) }
     /// ```
-    pub fn build(fetcher: F) -> BatcherBuilder<F> {
-        BatcherBuilder {
+    pub fn build(fetcher: F) -> BatchFetcherBuilder<F> {
+        BatchFetcherBuilder {
             fetcher,
             delay_duration: tokio::time::Duration::from_millis(10),
             eager_batch_size: Some(100),
-            label: "unlabeled-batcher".to_string(),
+            label: "unlabeled-batch-fetcher".to_string(),
         }
     }
 
@@ -124,9 +125,9 @@ where
     /// or by loading the cached value. Returns an error if the value could
     /// not be loaded or if a value for the given key was not found.
     ///
-    /// See the type-level docs for [`Batcher`](#load-semantics) for more
+    /// See the type-level docs for [`BatchFetcher`](#load-semantics) for more
     /// detailed loading semantics.
-    #[tracing::instrument(skip_all, fields(batcher = %self.label))]
+    #[tracing::instrument(skip_all, fields(batch_fetcher = %self.label))]
     pub async fn load(&self, key: F::Key) -> Result<F::Value, LoadError> {
         let mut values = self.load_keys(&[key]).await?;
         Ok(values.remove(0))
@@ -136,9 +137,9 @@ where
     /// or by loading cached values. Values are returned in the same order as
     /// the input keys. Returns an error if _any_ load fails.
     ///
-    /// See the type-level docs for [`Batcher`](#load-semantics) for more
+    /// See the type-level docs for [`BatchFetcher`](#load-semantics) for more
     /// detailed loading semantics.
-    #[tracing::instrument(skip_all, fields(batcher = %self.label, num_keys = keys.len()))]
+    #[tracing::instrument(skip_all, fields(batch_fetcher = %self.label, num_keys = keys.len()))]
     pub async fn load_many(&self, keys: &[F::Key]) -> Result<Vec<F::Value>, LoadError> {
         let values = self.load_keys(keys).await?;
         Ok(values)
@@ -149,7 +150,7 @@ where
 
         match cache_lookup.lookup(&self.cache_store) {
             CacheLookupState::Done(result) => {
-                tracing::debug!(batcher = %self.label, "all keys have already been looked up");
+                tracing::debug!(batch_fetcher = %self.label, "all keys have already been looked up");
                 return result;
             }
             CacheLookupState::Pending => {}
@@ -161,7 +162,7 @@ where
 
         tracing::debug!(
             num_pending_keys = pending_keys.len(),
-            batcher = %self.label,
+            batch_fetcher = %self.label,
             "sending a batch of keys to fetch",
         );
         let fetch_request = FetchRequest {
@@ -175,7 +176,7 @@ where
 
         match result_rx.await {
             Ok(Ok(())) => {
-                tracing::debug!(batcher = %self.label, "fetch response returned successfully");
+                tracing::debug!(batch_fetcher = %self.label, "fetch response returned successfully");
             }
             Ok(Err(fetch_error)) => {
                 tracing::info!("error returned while fetching keys: {}", fetch_error);
@@ -183,8 +184,8 @@ where
             }
             Err(recv_error) => {
                 panic!(
-                    "Batch result channel for batcher {batcher} hung up with error: {error}",
-                    batcher = self.label,
+                    "Batch result channel for batch fetcher {batch_fetcher} hung up with error: {error}",
+                    batch_fetcher = self.label,
                     error = recv_error,
                 );
             }
@@ -197,20 +198,20 @@ where
             }
             CacheLookupState::Pending => {
                 panic!(
-                    "Batch result for batcher {batcher} is still pending after result channel was sent",
-                    batcher = self.label,
+                    "Batch result for batch fetcher {batch_fetcher} is still pending after result channel was sent",
+                    batch_fetcher = self.label,
                 );
             }
         }
     }
 }
 
-impl<F> Clone for Batcher<F>
+impl<F> Clone for BatchFetcher<F>
 where
     F: Fetcher,
 {
     fn clone(&self) -> Self {
-        Batcher {
+        BatchFetcher {
             cache_store: self.cache_store.clone(),
             _fetch_task: self._fetch_task.clone(),
             fetch_request_tx: self.fetch_request_tx.clone(),
@@ -219,9 +220,9 @@ where
     }
 }
 
-/// Used to configure a new [`Batcher`]. A `BatcherBuilder` is returned from
-/// [`Batcher::build`].
-pub struct BatcherBuilder<F>
+/// Used to configure a new [`BatchFetcher`]. A `BatchFetcherBuilder` is
+/// returned from [`BatchFetcher::build`].
+pub struct BatchFetcherBuilder<F>
 where
     F: Fetcher + Send + Sync + 'static,
 {
@@ -231,12 +232,12 @@ where
     label: String,
 }
 
-impl<F> BatcherBuilder<F>
+impl<F> BatchFetcherBuilder<F>
 where
     F: Fetcher + Send + Sync + 'static,
 {
-    /// The maximum amount of time the [`Batcher`] will wait to queue up more
-    /// keys before calling the [`Fetcher`].
+    /// The maximum amount of time the [`BatchFetcher`] will wait to queue up
+    /// more keys before calling the [`Fetcher`].
     pub fn delay_duration(mut self, delay: tokio::time::Duration) -> Self {
         self.delay_duration = delay;
         self
@@ -245,29 +246,29 @@ where
     /// The maximum number of keys to wait for before eagerly calling the
     /// [`Fetcher`]. A value of `Some(n)` will load the batch once `n` or more
     /// keys have been queued (or once the timeout set by
-    /// [`delay_duration`](BatcherBuilder::delay_duration) is reached, whichever
-    /// comes first). A value of `None` will never eagerly dispatch the queue,
-    /// and the [`Batcher`] will always wait for the timeout set by
-    /// [`delay_duration`](BatcherBuilder::delay_duration).
+    /// [`delay_duration`](BatchFetcherBuilder::delay_duration) is reached,
+    /// whichever comes first). A value of `None` will never eagerly dispatch
+    /// the queue, and the [`BatchFetcher`] will always wait for the timeout set
+    /// by [`delay_duration`](BatchFetcherBuilder::delay_duration).
     ///
     /// Note that `eager_batch_size` **does not** set an upper limit on the
-    /// batch! For example, if [`Batcher::load_many`] is called with more than
-    /// `eager_batch_size` items, then the batch will be sent immediately with
-    /// _all_ of the provided keys.
+    /// batch! For example, if [`BatchFetcher::load_many`] is called with more
+    /// than `eager_batch_size` items, then the batch will be sent immediately
+    /// with _all_ of the provided keys.
     pub fn eager_batch_size(mut self, eager_batch_size: Option<usize>) -> Self {
         self.eager_batch_size = eager_batch_size;
         self
     }
 
-    /// Set a label for the [`Batcher`]. This is only used to improve diagnostic
-    /// messages, such as logs.
+    /// Set a label for the [`BatchFetcher`]. This is only used to improve
+    /// diagnostic messages, such as log messages.
     pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = label.into();
         self
     }
 
-    /// Create and return a [`Batcher`] with the given options.
-    pub fn finish(self) -> Batcher<F> {
+    /// Create and return a [`BatchFetcher`] with the given options.
+    pub fn finish(self) -> BatchFetcher<F> {
         let cache_store = CacheStore::new();
 
         let (fetch_request_tx, mut fetch_request_rx) =
@@ -282,10 +283,10 @@ where
                     let mut pending_keys = HashSet::new();
                     let mut result_txs = vec![];
 
-                    tracing::trace!(batcher = %self.label, "waiting for keys to fetch...");
+                    tracing::trace!(batch_fetcher = %self.label, "waiting for keys to fetch...");
                     match fetch_request_rx.recv().await {
                         Some(fetch_request) => {
-                            tracing::trace!(batcher = %self.label, num_fetch_request_keys = fetch_request.keys.len(), "received initial fetch request");
+                            tracing::trace!(batch_fetcher = %self.label, num_fetch_request_keys = fetch_request.keys.len(), "received initial fetch request");
 
                             for key in fetch_request.keys {
                                 pending_keys.insert(key);
@@ -307,7 +308,7 @@ where
                         if should_run_batch_now {
                             // We have enough keys already, so don't wait for more
                             tracing::trace!(
-                                batcher = %self.label,
+                                batch_fetcher = %self.label,
                                 num_pending_keys = pending_keys.len(),
                                 eager_batch_size = ?self.eager_batch_size,
                                 "batch filled up, ready to fetch keys now",
@@ -323,7 +324,7 @@ where
                             fetch_request = fetch_request_rx.recv() => {
                                 match fetch_request {
                                     Some(fetch_request) => {
-                                        tracing::trace!(batcher = %self.label, num_fetch_request_keys = fetch_request.keys.len(), "retrieved additional fetch request");
+                                        tracing::trace!(batch_fetcher = %self.label, num_fetch_request_keys = fetch_request.keys.len(), "retrieved additional fetch request");
 
                                         for key in fetch_request.keys {
                                             pending_keys.insert(key);
@@ -332,7 +333,7 @@ where
                                     }
                                     None => {
                                         // Fetch queue closed, so we're done waiting for keys
-                                        tracing::debug!(batcher = %self.label, num_pending_keys = pending_keys.len(), "fetch channel closed");
+                                        tracing::debug!(batch_fetcher = %self.label, num_pending_keys = pending_keys.len(), "fetch channel closed");
                                         break 'wait_for_more_keys;
                                     }
                                 }
@@ -341,7 +342,7 @@ where
                             _ = &mut delay => {
                                 // Reached delay, so we're done waiting for keys
                                 tracing::trace!(
-                                    batcher = %self.label,
+                                    batch_fetcher = %self.label,
                                     num_pending_keys = pending_keys.len(),
                                     "delay reached while waiting for more keys to fetch"
                                 );
@@ -353,7 +354,7 @@ where
                     let result = {
                         let mut cache = cache_store.as_cache();
 
-                        tracing::trace!(batcher = %self.label, num_pending_keys = pending_keys.len(), num_pending_channels = result_txs.len(), "fetching keys");
+                        tracing::trace!(batch_fetcher = %self.label, num_pending_keys = pending_keys.len(), num_pending_channels = result_txs.len(), "fetching keys");
                         let pending_keys: Vec<_> = pending_keys.into_iter().collect();
                         let result = self
                             .fetcher
@@ -376,7 +377,7 @@ where
             }
         });
 
-        Batcher {
+        BatchFetcher {
             label,
             cache_store,
             _fetch_task: Arc::new(fetch_task),
@@ -390,7 +391,7 @@ struct FetchRequest<K> {
     result_tx: tokio::sync::oneshot::Sender<Result<(), String>>,
 }
 
-/// Error indicating that loading one or more values from a [`Batcher`]
+/// Error indicating that loading one or more values from a [`BatchFetcher`]
 /// failed.
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
@@ -399,7 +400,7 @@ pub enum LoadError {
     #[error("error while fetching from batch: {}", _0)]
     FetchError(String),
 
-    /// The request could not be sent to the [`Batcher`].
+    /// The request could not be sent to the [`BatchFetcher`].
     #[error("error sending fetch request")]
     SendError,
 
