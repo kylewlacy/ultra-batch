@@ -1,8 +1,6 @@
 name: Tests
 on:
-  push:
-  schedule:
-    - cron: '50 0 * * FRI' # Every Friday at 00:50 UTC (4:50pm Pacific)
+  - push
 jobs:
   run-tests:
     name: Run tests (Rust ${{ matrix.rust }})
